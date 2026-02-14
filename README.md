@@ -13,11 +13,11 @@ The **Student Learning Journey Summarization System** is a Streamlit-based educa
 
 It transforms raw student records into:
 
-* 📊 Performance dashboards
-* 🎓 Top 5 subject insights
-* 📈 Trend & predictive analytics
-* 🧠 Behavioral trait extraction
-* 📝 AI-generated executive summaries (via Gemini API)
+*  Performance dashboards
+*  Top 5 subject insights
+*  Trend & predictive analytics
+*  Behavioral trait extraction
+*  AI-generated executive summaries (via Gemini API)
 
 The system is fully **Dockerized** and designed for scalable deployment.
 
