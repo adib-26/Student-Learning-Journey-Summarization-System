@@ -3,6 +3,8 @@
 AI-Powered Educational Data Analytics Platform
 Dockerized • Gemini Integrated • Production Ready
 
+(Sample Data is provided in the file section)
+
 ---
 
 ## 🚀 Overview
