@@ -124,6 +124,8 @@ http://localhost:8501
 | .png / .jpg  | Scanned academic documents |
 
 ---
+## 🖼️ Application Preview
+
 <img width="1388" height="728" alt="Screenshot 2026-02-14 at 1 15 58 PM" src="https://github.com/user-attachments/assets/1c7a9475-61d0-4a53-8dba-ac98d4910192" />
 <img width="1397" height="699" alt="Screenshot 2026-02-14 at 1 18 32 PM" src="https://github.com/user-attachments/assets/64aba096-f413-49ec-aaae-3413c0ebeda0" />
 
