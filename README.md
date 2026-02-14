@@ -3,7 +3,7 @@
 AI-Powered Educational Data Analytics Platform
 Dockerized • Gemini Integrated • Production Ready
 
-(Sample Data is provided in the file section)
+Sample Data - [Sample Data.zip](https://github.com/user-attachments/files/25312898/Sample.Data.zip)
 
 ---
 
