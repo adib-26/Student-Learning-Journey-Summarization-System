@@ -115,7 +115,7 @@ def _extract_certificate_data_with_gemini(text_content: str) -> dict:
 
         # Generate content using Gemini 2.0 Flash
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=prompt
         )
 

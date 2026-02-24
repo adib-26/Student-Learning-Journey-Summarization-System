@@ -99,7 +99,7 @@ def inject_ui_animations():
     """, unsafe_allow_html=True)
 
 
-# ---------- PROFESSIONAL SUMMARY WITH REVEAL ANIMATION ----------
+# ---------- PREMIUM SUMMARY WITH ADVANCED ANIMATIONS ----------
 
 def animated_summary(summary_text):
     components.html(f"""
@@ -108,32 +108,37 @@ def animated_summary(summary_text):
         margin: 0;
         padding: 0;
         background: transparent;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }}
 
     #summary-wrapper {{
         margin-top: 40px;
-        perspective: 1000px;
+        perspective: 1200px;
     }}
 
     #summary-box {{
-        padding: 36px;
-        border-radius: 18px;
-        background: linear-gradient(135deg, rgba(15,30,60,0.95), rgba(10,20,45,0.95));
-        border: 1px solid rgba(0,200,255,0.3);
+        padding: 40px;
+        border-radius: 20px;
+        background: linear-gradient(135deg, 
+            rgba(15,30,60,0.98) 0%, 
+            rgba(10,20,45,0.98) 50%,
+            rgba(20,25,50,0.98) 100%);
+        border: 1px solid rgba(0,200,255,0.4);
         box-shadow: 
-            0 20px 60px rgba(0,0,0,0.6),
-            inset 0 1px 0 rgba(255,255,255,0.1);
-        backdrop-filter: blur(16px);
+            0 25px 70px rgba(0,0,0,0.7),
+            0 10px 30px rgba(0,200,255,0.1),
+            inset 0 1px 0 rgba(255,255,255,0.15);
+        backdrop-filter: blur(20px);
         position: relative;
         overflow: hidden;
-        transform: scale(0.9);
+        transform: scale(0.92) rotateX(15deg);
         opacity: 0;
-        animation: boxReveal 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        animation: boxReveal 1s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
     }}
 
     @keyframes boxReveal {{
         0% {{
-            transform: scale(0.9) rotateX(10deg);
+            transform: scale(0.92) rotateX(15deg);
             opacity: 0;
         }}
         100% {{
@@ -142,7 +147,24 @@ def animated_summary(summary_text):
         }}
     }}
 
-    /* LEFT CURTAIN */
+    /* ANIMATED GRID BACKGROUND */
+    .grid-bg {{
+        position: absolute;
+        inset: 0;
+        background-image: 
+            linear-gradient(rgba(0,200,255,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,200,255,0.03) 1px, transparent 1px);
+        background-size: 30px 30px;
+        opacity: 0;
+        animation: gridFade 1s ease forwards 0.5s;
+        z-index: 0;
+    }}
+
+    @keyframes gridFade {{
+        to {{ opacity: 1; }}
+    }}
+
+    /* LEFT CURTAIN WITH GRADIENT */
     #summary-box::before {{
         content: "";
         position: absolute;
@@ -150,9 +172,13 @@ def animated_summary(summary_text):
         left: 0;
         width: 50%;
         height: 100%;
-        background: linear-gradient(90deg, #0a0e1a 0%, transparent 100%);
+        background: linear-gradient(90deg, 
+            #0a0e1a 0%, 
+            rgba(10,14,26,0.95) 70%,
+            transparent 100%);
         z-index: 10;
-        animation: curtainLeft 1.2s ease-out forwards 0.3s;
+        animation: curtainLeft 1.4s cubic-bezier(0.65, 0, 0.35, 1) forwards 0.4s;
+        box-shadow: 10px 0 30px rgba(0,0,0,0.5);
     }}
 
     @keyframes curtainLeft {{
@@ -160,7 +186,7 @@ def animated_summary(summary_text):
         100% {{ transform: translateX(-100%); }}
     }}
 
-    /* RIGHT CURTAIN */
+    /* RIGHT CURTAIN WITH GRADIENT */
     #summary-box::after {{
         content: "";
         position: absolute;
@@ -168,9 +194,13 @@ def animated_summary(summary_text):
         right: 0;
         width: 50%;
         height: 100%;
-        background: linear-gradient(-90deg, #0a0e1a 0%, transparent 100%);
+        background: linear-gradient(-90deg, 
+            #0a0e1a 0%, 
+            rgba(10,14,26,0.95) 70%,
+            transparent 100%);
         z-index: 10;
-        animation: curtainRight 1.2s ease-out forwards 0.3s;
+        animation: curtainRight 1.4s cubic-bezier(0.65, 0, 0.35, 1) forwards 0.4s;
+        box-shadow: -10px 0 30px rgba(0,0,0,0.5);
     }}
 
     @keyframes curtainRight {{
@@ -178,7 +208,7 @@ def animated_summary(summary_text):
         100% {{ transform: translateX(100%); }}
     }}
 
-    /* SCANNING LIGHT - APPEARS AFTER CURTAINS */
+    /* DOUBLE SCANNING LIGHT */
     .scan-light {{
         position: absolute;
         top: 0;
@@ -187,13 +217,14 @@ def animated_summary(summary_text):
         height: 100%;
         background: linear-gradient(90deg, 
             transparent 0%,
-            rgba(0,200,255,0.1) 45%,
-            rgba(0,200,255,0.3) 50%,
-            rgba(0,200,255,0.1) 55%,
+            rgba(0,200,255,0.08) 40%,
+            rgba(0,200,255,0.25) 50%,
+            rgba(0,200,255,0.08) 60%,
             transparent 100%
         );
         z-index: 5;
-        animation: scanSweep 2s ease-in-out 1.5s forwards;
+        animation: scanSweep 2.2s ease-in-out 1.8s forwards;
+        filter: blur(2px);
     }}
 
     @keyframes scanSweep {{
@@ -201,16 +232,79 @@ def animated_summary(summary_text):
         100% {{ left: 100%; }}
     }}
 
-    /* TITLE SECTION */
+    .scan-light-2 {{
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 50%;
+        height: 100%;
+        background: linear-gradient(90deg, 
+            transparent 0%,
+            rgba(100,50,255,0.15) 50%,
+            transparent 100%
+        );
+        z-index: 5;
+        animation: scanSweep2 2.5s ease-in-out 2.2s forwards;
+        filter: blur(3px);
+    }}
+
+    @keyframes scanSweep2 {{
+        0% {{ left: -100%; }}
+        100% {{ left: 110%; }}
+    }}
+
+    /* HOLOGRAPHIC PARTICLES */
+    .particle {{
+        position: absolute;
+        width: 2px;
+        height: 2px;
+        background: #00d9ff;
+        border-radius: 50%;
+        box-shadow: 0 0 8px #00d9ff, 0 0 15px #00d9ff;
+        opacity: 0;
+        animation: particleFloat 4s ease-in-out infinite;
+        z-index: 1;
+    }}
+
+    .particle:nth-child(1) {{ left: 10%; animation-delay: 2.5s; }}
+    .particle:nth-child(2) {{ left: 25%; animation-delay: 2.8s; }}
+    .particle:nth-child(3) {{ left: 40%; animation-delay: 3.1s; }}
+    .particle:nth-child(4) {{ left: 55%; animation-delay: 3.4s; }}
+    .particle:nth-child(5) {{ left: 70%; animation-delay: 3.7s; }}
+    .particle:nth-child(6) {{ left: 85%; animation-delay: 4s; }}
+
+    @keyframes particleFloat {{
+        0% {{ 
+            bottom: -10px; 
+            opacity: 0; 
+            transform: scale(0) translateX(0);
+        }}
+        10% {{ opacity: 0.8; transform: scale(1) translateX(5px); }}
+        50% {{ transform: translateX(-10px); }}
+        90% {{ opacity: 0.8; transform: scale(0.8) translateX(5px); }}
+        100% {{ 
+            bottom: 110%; 
+            opacity: 0; 
+            transform: scale(0) translateX(0);
+        }}
+    }}
+
+    /* TITLE SECTION WITH GLOW */
     .summary-header {{
         position: relative;
         z-index: 2;
-        margin-bottom: 20px;
-        padding-bottom: 15px;
-        border-bottom: 2px solid rgba(0,200,255,0.3);
+        margin-bottom: 24px;
+        padding-bottom: 18px;
+        border-bottom: 2px solid transparent;
+        border-image: linear-gradient(90deg, 
+            transparent, 
+            rgba(0,200,255,0.6), 
+            rgba(100,50,255,0.6), 
+            transparent
+        ) 1;
         opacity: 0;
-        transform: translateY(-20px);
-        animation: headerSlide 0.6s ease forwards 1.6s;
+        transform: translateY(-25px);
+        animation: headerSlide 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards 2s;
     }}
 
     @keyframes headerSlide {{
@@ -221,25 +315,35 @@ def animated_summary(summary_text):
     }}
 
     .summary-title {{
-        font-size: 1.4em;
-        font-weight: 600;
-        color: #00d9ff;
+        font-size: 1.5em;
+        font-weight: 700;
+        background: linear-gradient(90deg, #00d9ff, #64c8ff, #00d9ff);
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
         text-transform: uppercase;
-        letter-spacing: 2px;
+        letter-spacing: 3px;
         margin: 0;
-        text-shadow: 0 0 20px rgba(0,217,255,0.5);
+        animation: titleShimmer 3s ease-in-out infinite;
+        filter: drop-shadow(0 0 20px rgba(0,217,255,0.6));
     }}
 
-    /* CONTENT */
+    @keyframes titleShimmer {{
+        0%, 100% {{ background-position: 0% center; }}
+        50% {{ background-position: 100% center; }}
+    }}
+
+    /* CONTENT WITH STAGGER */
     #summary-content {{
         position: relative;
         z-index: 2;
-        line-height: 1.9;
+        line-height: 2;
         color: #e6eef8;
-        font-size: 1.05em;
+        font-size: 1.08em;
         opacity: 0;
-        transform: translateX(-30px);
-        animation: contentSlide 0.8s ease forwards 1.8s;
+        transform: translateX(-40px);
+        animation: contentSlide 1s cubic-bezier(0.34, 1.56, 0.64, 1) forwards 2.3s;
     }}
 
     @keyframes contentSlide {{
@@ -249,20 +353,18 @@ def animated_summary(summary_text):
         }}
     }}
 
-    /* GRADIENT WAVE BACKGROUND */
+    /* DYNAMIC WAVE BACKGROUND */
     .wave-bg {{
         position: absolute;
         bottom: -50%;
         left: -50%;
         width: 200%;
         height: 200%;
-        background: radial-gradient(circle at center, 
-            rgba(0,200,255,0.08) 0%,
-            rgba(100,50,255,0.05) 50%,
-            transparent 70%
-        );
+        background: 
+            radial-gradient(circle at 30% 50%, rgba(0,200,255,0.12) 0%, transparent 50%),
+            radial-gradient(circle at 70% 50%, rgba(100,50,255,0.08) 0%, transparent 50%);
         opacity: 0;
-        animation: waveReveal 1.5s ease forwards 2s, waveMove 8s ease-in-out infinite 3.5s;
+        animation: waveReveal 2s ease forwards 2.5s, waveMove 10s ease-in-out infinite 4.5s;
         z-index: 0;
     }}
 
@@ -272,52 +374,128 @@ def animated_summary(summary_text):
 
     @keyframes waveMove {{
         0%, 100% {{ 
-            transform: translate(0%, 0%) scale(1); 
+            transform: translate(0%, 0%) rotate(0deg); 
         }}
-        33% {{ 
-            transform: translate(5%, -5%) scale(1.05); 
+        25% {{ 
+            transform: translate(5%, -5%) rotate(2deg); 
         }}
-        66% {{ 
-            transform: translate(-5%, 5%) scale(0.95); 
+        50% {{ 
+            transform: translate(-3%, 3%) rotate(-2deg); 
+        }}
+        75% {{ 
+            transform: translate(3%, -3%) rotate(1deg); 
         }}
     }}
 
-    /* CORNER ACCENTS */
+    /* ENHANCED CORNER ACCENTS */
     .corner-accent {{
         position: absolute;
-        width: 40px;
-        height: 40px;
-        border: 2px solid rgba(0,200,255,0.5);
+        width: 50px;
+        height: 50px;
         z-index: 3;
         opacity: 0;
-        animation: cornerFade 0.5s ease forwards 2.2s;
+        animation: cornerReveal 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards 2.8s;
     }}
 
-    @keyframes cornerFade {{
-        to {{ opacity: 1; }}
+    @keyframes cornerReveal {{
+        0% {{ opacity: 0; transform: scale(0); }}
+        100% {{ opacity: 1; transform: scale(1); }}
     }}
 
     .corner-tl {{
-        top: 10px;
-        left: 10px;
-        border-right: none;
-        border-bottom: none;
-        border-radius: 4px 0 0 0;
+        top: 15px;
+        left: 15px;
+        border-top: 3px solid rgba(0,200,255,0.7);
+        border-left: 3px solid rgba(0,200,255,0.7);
+        border-radius: 6px 0 0 0;
+        box-shadow: 
+            -5px -5px 20px rgba(0,200,255,0.3),
+            inset 2px 2px 5px rgba(0,200,255,0.2);
     }}
 
     .corner-br {{
-        bottom: 10px;
-        right: 10px;
-        border-left: none;
-        border-top: none;
-        border-radius: 0 0 4px 0;
+        bottom: 15px;
+        right: 15px;
+        border-bottom: 3px solid rgba(100,50,255,0.7);
+        border-right: 3px solid rgba(100,50,255,0.7);
+        border-radius: 0 0 6px 0;
+        box-shadow: 
+            5px 5px 20px rgba(100,50,255,0.3),
+            inset -2px -2px 5px rgba(100,50,255,0.2);
+    }}
+
+    /* ENERGY PULSE BORDER */
+    .energy-border {{
+        position: absolute;
+        inset: -3px;
+        border-radius: 20px;
+        background: linear-gradient(90deg,
+            transparent,
+            rgba(0,200,255,0.5),
+            transparent,
+            rgba(100,50,255,0.5),
+            transparent
+        );
+        background-size: 200% 100%;
+        opacity: 0;
+        animation: borderFade 1s ease forwards 3.2s, borderPulse 4s linear infinite 4.2s;
+        z-index: -1;
+        filter: blur(6px);
+    }}
+
+    @keyframes borderFade {{
+        to {{ opacity: 1; }}
+    }}
+
+    @keyframes borderPulse {{
+        0% {{ background-position: 0% 0; }}
+        100% {{ background-position: 200% 0; }}
+    }}
+
+    /* AMBIENT GLOW */
+    .ambient-glow {{
+        position: absolute;
+        inset: -80px;
+        border-radius: 50%;
+        background: radial-gradient(circle, 
+            rgba(0,200,255,0.15) 0%,
+            rgba(100,50,255,0.1) 40%,
+            transparent 70%
+        );
+        filter: blur(50px);
+        opacity: 0;
+        animation: glowPulse 6s ease-in-out infinite 3.5s;
+        z-index: -2;
+    }}
+
+    @keyframes glowPulse {{
+        0%, 100% {{ 
+            opacity: 0.4; 
+            transform: scale(1); 
+        }}
+        50% {{ 
+            opacity: 0.7; 
+            transform: scale(1.15); 
+        }}
     }}
     </style>
 
     <div id="summary-wrapper">
         <div id="summary-box">
+            <div class="grid-bg"></div>
             <div class="scan-light"></div>
+            <div class="scan-light-2"></div>
             <div class="wave-bg"></div>
+            <div class="energy-border"></div>
+            <div class="ambient-glow"></div>
+
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+
             <div class="corner-accent corner-tl"></div>
             <div class="corner-accent corner-br"></div>
 
@@ -337,8 +515,8 @@ def animated_summary(summary_text):
             behavior: "smooth", 
             block: "center" 
         }});
-    }}, 400);
+    }}, 500);
     </script>
-    """, height=380)
+    """, height=420)
 
 # --- End UI/Animation Injection ---
