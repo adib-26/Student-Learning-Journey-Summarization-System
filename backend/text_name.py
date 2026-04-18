@@ -1,147 +1,155 @@
 import os
 import re
-from typing import Optional
+from typing import Optional, List, Tuple
+import streamlit as st
+from google import genai
 
-# Optional import of Docling; only used when a real file path is provided.
+# Try to import the document converter
 try:
     from docling.document_converter import DocumentConverter
 except Exception:
     DocumentConverter = None
 
 
-def _collapse_spaced_letters(text: str) -> str:
-    """
-    Fix OCR outputs where letters are spaced like "H e l e n e".
-    Collapses runs of single letters separated by spaces into a single word.
-    """
-    def _collapse(match):
-        return match.group(0).replace(" ", "")
+# --- RULE-BASED EXTRACTION LOGIC ---
 
-    # Match runs like "H e l e n e" (at least 3 single-letter + spaces)
-    text = re.sub(r'(?:\b(?:[A-Za-z]\s){2,}[A-Za-z]\b)', _collapse, text)
-    return text
+def _collapse_spaced_letters(text: str) -> str:
+    return re.sub(r'(?:\b(?:[A-Za-z]\s){2,}[A-Za-z]\b)', lambda m: m.group(0).replace(" ", ""), text)
 
 
 def _normalize_text(text: str) -> str:
-    """
-    Normalize whitespace and punctuation for more reliable regex matching.
-    """
     text = text.replace('\r\n', '\n').replace('\r', '\n')
     text = _collapse_spaced_letters(text)
-    # Replace multiple spaces with single space, but keep newlines
     text = re.sub(r'[ \t]{2,}', ' ', text)
-    # Normalize repeated newlines
     text = re.sub(r'\n{2,}', '\n\n', text)
     return text.strip()
 
 
-def _extract_from_text_blob(text: str) -> Optional[str]:
-    """
-    Core heuristics to find a person name inside a text blob.
-    Returns the name string or None.
-    """
-    if not text:
-        return None
+def _score_name(name: str, context: str) -> int:
+    score = 0
+    words = name.split()
+    if 2 <= len(words) <= 3:
+        score += 3
 
-    t = _normalize_text(text)
+    bad_words = {
+        "certificate", "completion", "course", "award",
+        "honored", "with", "has", "been", "tech", "academy",
+        "association", "university", "institute", "webinar"
+    }
+    if any(w.lower() in bad_words for w in words):
+        score -= 10
 
-    # Common certificate phrases to look for (case-insensitive)
+    if re.search(r'(certifies|certify|presented to|awarded to|honored with)', context, re.IGNORECASE):
+        score += 5
+    return score
+
+
+def _find_candidates(text: str) -> List[Tuple[str, int]]:
+    candidates = []
+
+    # 1. Name BEFORE phrase
+    before_patterns = [
+        r'([A-Z][A-Za-z\'`.-]+(?:\s+[A-Z][A-Za-z\'`.-]+){1,3})\s+has been honored with',
+        r'([A-Z][A-Za-z\'`.-]+(?:\s+[A-Z][A-Za-z\'`.-]+){1,3})\s+has been awarded',
+        r'([A-Z][A-Za-z\'`.-]+(?:\s+[A-Z][A-Za-z\'`.-]+){1,3})\s+has successfully completed',
+    ]
+    for pattern in before_patterns:
+        for m in re.finditer(pattern, text, re.IGNORECASE):
+            name = m.group(1).strip()
+            candidates.append((name, _score_name(name, m.group(0)) + 10))
+
+    # 2. Phrase AFTER
     phrases = [
         r'this certifies that',
-        r'this certificate is proudly presented to',
-        r'presented to',
         r'this to certify that',
-        r'this certificate is presented to',
-        r'this certificate of completion is presented to',
-        r'this certificate is awarded to',
-        r'this certifies that the',
-        r'this certifies that'
+        r'presented to',
+        r'awarded to',
+        r'certificate is presented to',
     ]
-
-    # Try phrase-based extraction: prefer name on the next non-empty line (block).
     for phrase in phrases:
-        # Block pattern: phrase on its own line, name on next non-empty line
-        block_pattern = re.compile(
-            rf'{phrase}\s*(?:[:\-–—]?\s*)?\n\s*([A-Z][A-Za-z\'`.-]+(?:\s+[A-Z][A-Za-z\'`.-]+){{0,4}})\s*(?=\n|$|[.,;:!?])',
+        pattern = re.compile(
+            rf'{phrase}\s*(?:[:\-–—]?\s*)?\n?\s*([A-Z][A-Za-z\'`.-]+(?:\s+[A-Z][A-Za-z\'`.-]+){{0,3}})',
             re.IGNORECASE
         )
-        m_block = block_pattern.search(t)
-        if m_block:
-            return m_block.group(1).strip()
+        for m in pattern.finditer(text):
+            name = m.group(1).strip()
+            candidates.append((name, _score_name(name, m.group(0))))
 
-    # If block patterns failed, try inline patterns but ensure we stop before verbs like "has", "completed", etc.
-    for phrase in phrases:
-        inline_pattern = re.compile(
-            rf'{phrase}\s*(?:[:\-–—]?\s*)?([A-Z][A-Za-z\'`.-]+(?:\s+[A-Z][A-Za-z\'`.-]+){{0,4}})(?=\s*(?:has\b|was\b|completed\b|successfully\b|,|\n|$|\.))',
-            re.IGNORECASE
+    # 3. ALL CAPS fallback
+    for m in re.finditer(r'\b([A-Z]{2,}(?:\s+[A-Z]{2,}){1,2})\b', text):
+        name = m.group(1).title()
+        candidates.append((name, _score_name(name, m.group(0))))
+
+    return candidates
+
+
+def _extract_best_name(text: str) -> Optional[str]:
+    text = _normalize_text(text)
+    candidates = _find_candidates(text)
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    return candidates[0][0]
+
+
+# --- GEMINI VALIDATION LOGIC ---
+
+def _validate_name_with_gemini(extracted_name: str, full_text: str) -> str:
+    """Uses Gemini to confirm if the extracted name is actually the student."""
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        client = genai.Client(api_key=api_key)
+
+        prompt = f"""
+        I am extracting the recipient's name from a certificate.
+        Rule-based logic extracted: "{extracted_name}"
+
+        Full Document Text:
+        {full_text}
+
+        Task: 
+        1. Check if "{extracted_name}" is truly the person who received the certificate.
+        2. If it is wrong (e.g., it is a company name, a teacher, or a coordinator), find the correct recipient name in the text.
+        3. Return ONLY the full name of the person. No extra words.
+        """
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",  # or your preferred version
+            contents=prompt,
         )
-        m_inline = inline_pattern.search(t)
-        if m_inline:
-            return m_inline.group(1).strip()
+        return response.text.strip()
+    except Exception as e:
+        # If Gemini fails, return the original extracted name as fallback
+        return extracted_name
 
-    # Fallback 1: find all-caps names (e.g., HELENE PAQUET) but avoid long all-caps lines that are not names
-    all_caps_pattern = re.compile(r'\b([A-Z]{2,}(?:\s+[A-Z]{2,}){0,4})\b')
-    for m in all_caps_pattern.finditer(t):
-        candidate = m.group(1).strip()
-        # Heuristic: treat as name if it contains 1-3 words and not too long
-        if 1 <= len(candidate.split()) <= 3 and len(candidate) < 40:
-            parts = []
-            for w in candidate.split():
-                if len(w) <= 2 and w.isupper():
-                    parts.append(w)  # keep initials
-                else:
-                    parts.append(w.capitalize())
-            return " ".join(parts)
 
-    # Fallback 2: first two- or three-word Title Case name (e.g., Helene Paquet)
-    title_case_pattern = re.compile(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b')
-    m_title = title_case_pattern.search(t)
-    if m_title:
-        return m_title.group(1).strip()
-
-    return None
-
+# --- MAIN ENTRY POINT ---
 
 def extract_student_name(file_path_or_text: str) -> str:
-    """
-    Extract a student's name from either:
-      - a file path (PDF/image) -> Docling conversion used if available
-      - a raw text blob (string) -> direct text heuristics
-
-    The function auto-detects whether the input is a path to an existing file.
-    Returns a string with the detected name or "Unknown Student" / "Student name not found".
-    """
     try:
-        # If input points to an existing file, try to use Docling to convert it.
+        text = ""
         if isinstance(file_path_or_text, str) and os.path.exists(file_path_or_text):
             if DocumentConverter is None:
-                # Docling not installed or failed to import
                 return "Unknown Student"
+            converter = DocumentConverter()
+            result = converter.convert(file_path_or_text)
+            text = result.document.export_to_markdown()
+        else:
+            text = file_path_or_text
 
-            try:
-                converter = DocumentConverter()
-                result = converter.convert(file_path_or_text)
-                markdown_text = result.document.export_to_markdown()
-                name = _extract_from_text_blob(markdown_text)
-                return name or "Student name not found"
-            except Exception:
-                return "Unknown Student"
+        if isinstance(text, (bytes, bytearray)):
+            text = text.decode('utf-8', errors='ignore')
 
-        # Otherwise treat the input as raw text
-        if isinstance(file_path_or_text, str):
-            name = _extract_from_text_blob(file_path_or_text)
-            return name or "Student name not found"
+        # Step 1: Rule-based extraction (Fast)
+        initial_name = _extract_best_name(text)
 
-        # If input is bytes or file-like, try to decode
-        if isinstance(file_path_or_text, (bytes, bytearray)):
-            try:
-                text = file_path_or_text.decode('utf-8', errors='ignore')
-                name = _extract_from_text_blob(text)
-                return name or "Student name not found"
-            except Exception:
-                return "Unknown Student"
+        if not initial_name or initial_name == "Student name not found":
+            # Step 2: If rules fail, ask Gemini to find it from scratch
+            return _validate_name_with_gemini("Unknown", text)
 
-        return "Unknown Student"
+        # Step 3: Double-check with Gemini (Accurate)
+        final_name = _validate_name_with_gemini(initial_name, text)
+        return final_name
 
     except Exception:
         return "Unknown Student"

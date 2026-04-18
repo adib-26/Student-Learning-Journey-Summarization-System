@@ -131,13 +131,13 @@ if df is None or df.empty:
 
             # --- C. FINAL SUMMARY (Moved to the end) ---
             if summary:
-                st.markdown("---")
-                st.subheader("📝 Professional Executive Summary")
-                # Using st.info for a clean, highlighted background
-                st.info(summary)
+                    st.markdown("---")
+                    st.subheader("📝 Professional Executive Summary")
 
-        st.stop()
+                    # Run the animated summary for unstructured inputs
+                    animated_summary(summary)
 
+            st.stop()
 
 # =====================================================
 # STUDENT INFO
