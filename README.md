@@ -1,4 +1,4 @@
-# 📊 Student Learning Journey Summarization System
+#  Student Learning Journey Summarization System
 
 AI-Powered Educational Data Analytics Platform
 Dockerized • Gemini Integrated • Production Ready
@@ -7,7 +7,7 @@ Sample Data - [Sample Data.zip](https://github.com/user-attachments/files/253128
 
 ---
 
-## 🚀 Overview
+##  Overview
 
 The **Student Learning Journey Summarization System** is a Streamlit-based educational analytics platform that processes both structured and unstructured academic data.
 
@@ -23,7 +23,7 @@ The system is fully **Dockerized** and designed for scalable deployment.
 
 ---
 
-## 🧠 Key Features
+##  Key Features
 
 | Feature                 | Description                              |
 | ----------------------- | ---------------------------------------- |
@@ -40,7 +40,7 @@ The system is fully **Dockerized** and designed for scalable deployment.
 
 ---
 
-## 🏗️ Project Structure
+##  Project Structure
 
 ```
 .
@@ -65,7 +65,7 @@ The system is fully **Dockerized** and designed for scalable deployment.
 
 ---
 
-## ⚙️ Technology Stack
+##  Technology Stack
 
 | Layer            | Technology        |
 | ---------------- | ----------------- |
@@ -78,7 +78,7 @@ The system is fully **Dockerized** and designed for scalable deployment.
 
 ---
 
-## 🔐 Environment Variables
+##  Environment Variables
 
 Create a `.env` file:
 
@@ -90,7 +90,7 @@ Or pass it directly when running Docker.
 
 ---
 
-## 🐳 Docker Setup
+##  Docker Setup
 
 ### 1️⃣ Build Image
 
