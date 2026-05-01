@@ -22,6 +22,7 @@ from backend.chart import render_visualizations
 from backend.behaviour_extractor import extract_behaviour_pairs
 
 from backend.text_info_extractor import get_student_name_from_text
+from backend.download import get_report_bytes, create_download_button
 from backend.text_info_extractor import get_text_info
 
 # =====================================================
@@ -237,7 +238,12 @@ with col4:
 # =====================================================
 # VISUALS
 # =====================================================
-render_visualizations(cleaned_df, extracted_text or "")
+# Capture chart images returned by render_visualizations so they can be embedded in the PDF.
+# render_visualizations now returns a list of PNG bytes (may be empty).
+charts_images = []
+maybe_images = render_visualizations(cleaned_df, extracted_text or "")
+if isinstance(maybe_images, list):
+    charts_images = maybe_images
 
 # =====================================================
 # AI SUMMARY
@@ -249,6 +255,48 @@ summary = generate_summary(
     mode="insight"
 )
 animated_summary(summary)
+
+# =====================================================
+# PREPARE STATS AND PAGE SNAPSHOT FOR DOWNLOAD
+# =====================================================
+# Ensure stats include the final summary and metric keys the PDF generator expects
+stats["summary"] = summary
+stats["averages"] = stats.get("averages", {})
+stats["averages"]["Score"] = avg_score
+stats["highest_score"] = highest_score
+stats["lowest_score"] = lowest_score
+stats["total_records"] = len(cleaned_df)
+
+# Build a simple textual snapshot of the visible page content to include in the PDF
+page_html = (
+    f"Student: {student_name}\n"
+    f"Average Score: {avg_score:.2f}\n"
+    f"Total Records: {len(cleaned_df)}\n\n"
+    f"Executive Summary:\n{summary}\n"
+)
+
+# =====================================================
+# DOWNLOAD (generate black-and-white PDF from page content)
+# =====================================================
+pdf_bytes = get_report_bytes(
+    stats=stats,
+    df=cleaned_df,
+    student_info=stats.get("student_details", {}),
+    student_name=student_name,
+    extracted_text=extracted_text or "",
+    behaviour_traits=behaviour_traits,
+    charts_images=charts_images,
+    page_html=page_html,
+    page_images=[],  # pass screenshots here if you capture them client-side
+    summary=summary,
+)
+
+create_download_button(
+    pdf_bytes,
+    filename=f"{student_name.replace(' ', '_')}_report.pdf",
+    label="⬇️ Download Black and White Report"
+)
+
 
 # =====================================================
 # FOOTER

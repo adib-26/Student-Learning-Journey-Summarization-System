@@ -1,10 +1,12 @@
+import io
 import streamlit as st
 import plotly.express as px
 import pandas as pd
-from typing import Optional
+from typing import Optional, List
 
 from backend.data_cleaning import get_valid_x_axis_columns
 from backend.text_visualizations import visualize_text
+
 
 # -----------------------------
 # Helper for plotting
@@ -28,7 +30,12 @@ def prepare_plot_df(df: pd.DataFrame, x_col: Optional[str], y_col: str) -> pd.Da
 # -----------------------------
 # Visualization Section
 # -----------------------------
-def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str):
+def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List[bytes]:
+    """
+    Render visuals to Streamlit and return a list of PNG bytes for each chart rendered.
+    If no charts are produced, returns an empty list.
+    """
+    images: List[bytes] = []
 
     numeric_cols = cleaned_df.select_dtypes(include=["number"]).columns.tolist()
     numeric_cols = [c for c in numeric_cols if c.lower() != "maximum"]
@@ -37,7 +44,7 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str):
 
     if not numeric_cols:
         visualize_text(extracted_text)
-        return
+        return images
 
     st.subheader("🎛 Interactive Visualization")
 
@@ -56,23 +63,40 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str):
 
     fig = None
 
+    # Helper to try export Plotly fig to PNG bytes
+    def _fig_to_png_bytes(plotly_fig, width: int = 1200, height: int = 600, scale: int = 2) -> Optional[bytes]:
+        try:
+            # plotly >= 4.9 with kaleido or orca can export to image
+            img_bytes = plotly_fig.to_image(format="png", width=width, height=height, scale=scale)
+            return img_bytes
+        except Exception:
+            return None
+
     # -----------------------------
     # Standard charts
     # -----------------------------
+    x_vals = None
+    if x_axis and x_axis in plot_df.columns:
+        x_vals = plot_df[x_axis]
+    else:
+        # use index as categorical x if no x_axis provided
+        x_vals = plot_df.index.astype(str)
+
     if chart_type == "Bar":
-        fig = px.bar(plot_df, x=x_axis or plot_df.index.astype(str), y=y_axis)
+        fig = px.bar(plot_df, x=x_vals, y=y_axis, labels={ "x": x_axis or "index", y_axis: y_axis })
 
     elif chart_type == "Line":
-        fig = px.line(plot_df, x=x_axis or plot_df.index.astype(str), y=y_axis, markers=True)
+        fig = px.line(plot_df, x=x_vals, y=y_axis, markers=True, labels={ "x": x_axis or "index", y_axis: y_axis })
 
     elif chart_type == "Area":
-        fig = px.area(plot_df, x=x_axis or plot_df.index.astype(str), y=y_axis)
+        fig = px.area(plot_df, x=x_vals, y=y_axis, labels={ "x": x_axis or "index", y_axis: y_axis })
 
     elif chart_type == "Scatter":
-        fig = px.scatter(plot_df, x=x_axis or plot_df.index.astype(str), y=y_axis)
+        fig = px.scatter(plot_df, x=x_vals, y=y_axis, labels={ "x": x_axis or "index", y_axis: y_axis })
 
     elif chart_type == "Pie":
         if x_axis:
+            # For pie, use categorical names and numeric values
             fig = px.pie(plot_df, names=x_axis, values=y_axis)
         else:
             st.warning("Pie chart requires a categorical X-axis.")
@@ -85,7 +109,7 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str):
 
         if "Label" not in cleaned_df.columns or "Score" not in cleaned_df.columns:
             st.warning("Spider chart requires Label and Score columns.")
-            return
+            return images
 
         radar_df = cleaned_df[["Label", "Score"]].copy()
         radar_df["Score"] = pd.to_numeric(radar_df["Score"], errors="coerce")
@@ -93,7 +117,7 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str):
 
         if radar_df.shape[0] < 3:
             st.warning("Not enough numeric data to build a spider chart.")
-            return
+            return images
 
         radar_df["Entity"] = "Student Performance"
 
@@ -113,7 +137,6 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str):
             marker=dict(size=6)
         )
 
-        # ✅ Remove crosshair / axis line
         fig.update_layout(
             polar=dict(
                 radialaxis=dict(
@@ -129,5 +152,16 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str):
             showlegend=False
         )
 
+    # Render and attempt to capture PNG bytes
     if fig:
-        st.plotly_chart(fig, use_container_width=True)
+        try:
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception:
+            # If Streamlit plotting fails for any reason, still attempt to export
+            pass
+
+        png = _fig_to_png_bytes(fig)
+        if png:
+            images.append(png)
+
+    return images
