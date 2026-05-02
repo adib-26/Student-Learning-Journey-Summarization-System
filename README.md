@@ -126,8 +126,10 @@ http://localhost:8501
 ---
 ## 🖼️ Application Preview
 
-<img width="1388" height="728" alt="Screenshot 2026-02-14 at 1 15 58 PM" src="https://github.com/user-attachments/assets/1c7a9475-61d0-4a53-8dba-ac98d4910192" />
-<img width="1347" height="648" alt="Screenshot 2026-02-14 at 5 13 22 PM" src="https://github.com/user-attachments/assets/6041715e-958f-46c0-bc56-6df59a012462" />
+<img width="1319" height="646" alt="Screenshot 2026-05-02 at 3 53 19 PM" src="https://github.com/user-attachments/assets/a0b58878-0ebb-4ee2-94a5-553fa4e7795d" />
+<img width="1310" height="482" alt="Screenshot 2026-05-02 at 3 54 04 PM" src="https://github.com/user-attachments/assets/a63ffbe2-321b-4e62-9284-09b348a05d01" />
+<img width="1284" height="521" alt="Screenshot 2026-05-02 at 3 54 43 PM" src="https://github.com/user-attachments/assets/2e414fef-79cf-4878-a7d4-1603eeda5c4a" />
+<img width="1306" height="588" alt="Screenshot 2026-05-02 at 3 54 57 PM" src="https://github.com/user-attachments/assets/32f52612-3d3f-4317-8817-2e8f6832978d" />
 
 ---
 
