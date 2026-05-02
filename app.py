@@ -137,6 +137,37 @@ if df is None or df.empty:
 
                     # Run the animated summary for unstructured inputs
                     animated_summary(summary)
+                    # ADD THIS BLOCK just BEFORE st.stop() inside unstructured section
+
+                    # --- D. DOWNLOAD (FIX ADDED) ---
+                    stats_unstructured = {
+                        "summary": summary,
+                        "averages": {"Score": 0},
+                        "highest_score": 0,
+                        "lowest_score": 0,
+                        "total_records": 0,
+                        "student_details": {},
+                        "student_name": student_name_unstructured,
+                    }
+
+                    pdf_bytes = get_report_bytes(
+                        stats=stats_unstructured,
+                        df=pd.DataFrame(),  # no structured table
+                        student_info={},
+                        student_name=student_name_unstructured,
+                        extracted_text=text_source,
+                        behaviour_traits=[],
+                        charts_images=[],
+                        page_html="",
+                        page_images=[],
+                        summary=summary,
+                    )
+
+                    create_download_button(
+                        pdf_bytes,
+                        filename=f"{student_name_unstructured.replace(' ', '_')}_report.pdf",
+                        label="⬇️ Download Black and White Report"
+                    )
 
             st.stop()
 
