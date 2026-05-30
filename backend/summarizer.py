@@ -1,15 +1,17 @@
-# backend/summarizer.py
 """
 Generate AI-powered educational summaries for student performance.
-Handles OCR and structured data, separates numeric subject scores from qualitative
-behaviour ratings, and optionally polishes the draft with an LLM.
 """
-import streamlit as st
-import os
-# from google import genai  # Commented out for now
 import re
-from typing import Dict, Optional, Any
+import time
+import copy
 from collections import defaultdict
+from typing import Any, Dict, Optional
+
+import streamlit as st
+
+from .secure_gemini_client import SecureGeminiClient
+from .pii_protection import PIIProtector
+from .audit_logging import AuditLogger  # Aligned import filename
 
 # Try to import behaviour extractor from backend package; fallback to no-op.
 try:
@@ -18,10 +20,25 @@ except Exception:
     try:
         from behaviour_extractor import extract_behaviour_pairs
     except Exception:
-        def extract_behaviour_pairs(text: Optional[str] = None, df: Optional[object] = None) -> Dict[str, str]:
+        def extract_behaviour_pairs(
+                text: Optional[str] = None,
+                df: Optional[object] = None,
+        ) -> Dict[str, str]:
             return {}
 
-# Subject name translations (Malay -> English with Malay in parentheses)
+# -------------------------
+# Security components (Singleton instances or fresh attachments)
+# -------------------------
+secure_client = SecureGeminiClient()
+pii_protector = PIIProtector()
+
+# Multi-tenant Streamlit safety alignment
+session_id = st.session_state.get("user_session_token", "SYSTEM_FALLBACK")
+audit_logger = AuditLogger(custom_session_id=session_id)
+
+# -------------------------
+# Subject translations
+# -------------------------
 SUBJECT_TRANSLATIONS = {
     "Sejarah": "Sejarah (History)",
     "Sains": "Sains (Science)",
@@ -66,7 +83,10 @@ def format_student_details(details: Dict[str, Any]) -> str:
     return " ".join(parts).strip()
 
 
-def format_behaviour_traits(traits: Dict[str, str], gender: Optional[str]) -> Optional[str]:
+def format_behaviour_traits(
+        traits: Dict[str, str],
+        gender: Optional[str],
+) -> Optional[str]:
     """
     Convert behaviour traits into a natural readable sentence.
     Groups traits by rating and creates a flowing narrative.
@@ -76,17 +96,19 @@ def format_behaviour_traits(traits: Dict[str, str], gender: Optional[str]) -> Op
 
     grouped = defaultdict(list)
     for trait, rating in traits.items():
-        if not trait:
+        if not trait or not rating:
             continue
         grouped[rating.strip().capitalize()].append(trait.strip())
 
     pronoun_subject = "She" if gender == "Female" else "He"
     phrases = []
+
     rating_order = ["Excellent", "Very Good", "Good", "Fair", "Poor", "Bad"]
 
     for rating in rating_order:
         if rating not in grouped:
             continue
+
         trait_list = grouped[rating]
         if len(trait_list) == 1:
             trait_str = trait_list[0].lower()
@@ -113,6 +135,7 @@ def format_behaviour_traits(traits: Dict[str, str], gender: Optional[str]) -> Op
 
     if len(phrases) == 1:
         return phrases[0] + "."
+
     return ", ".join(phrases) + "."
 
 
@@ -120,7 +143,7 @@ def format_behaviour_traits(traits: Dict[str, str], gender: Optional[str]) -> Op
 # Subject extraction & validation
 # -------------------------
 _SUBJECT_SCORE_RE = re.compile(
-    r"([A-Za-z &\-/]{2,60}?)\s*(?:[:\-]\s*|\s+)\s*(\d{1,3}(?:\.\d+)?)\s*(?:/\s*\d{1,3})?",
+    r"\b([A-Za-z &\-/]{2,40}?)\s*(?:[:\-]\s*|\s{2,})\s*(\d{1,3}(?:\.\d+)?)\b",
     flags=re.IGNORECASE,
 )
 
@@ -128,23 +151,29 @@ _SUBJECT_SCORE_RE = re.compile(
 def extract_subject_scores(text: str) -> Dict[str, float]:
     """
     Heuristic extraction of subject -> numeric score from OCR text.
-    Returns subject title -> float score (0-100). Ignores values outside 0-100.
+    Returns subject title -> float score (0-100).
     """
     if not text:
         return {}
+
     results: Dict[str, float] = {}
     for match in _SUBJECT_SCORE_RE.finditer(text):
         raw_subj = match.group(1).strip()
         raw_score = match.group(2).strip()
+
         try:
             score = float(raw_score)
-        except Exception:
+        except ValueError:
             continue
+
         if 0 <= score <= 100:
+            # Avoid cleaning out legitimate slash indicators inside names
             subj = re.sub(r"[^\w\s\-/&']", " ", raw_subj)
             subj = re.sub(r"\s+", " ", subj).strip().title()
-            if subj:
+
+            if subj and len(subj) > 2:
                 results[subj] = score
+
     return results
 
 
@@ -153,39 +182,42 @@ def extract_subject_scores(text: str) -> Dict[str, float]:
 # -------------------------
 def build_detailed_educational_insight(
         stats: Dict[str, Any],
-        extracted_text: Optional[str] = None
+        extracted_text: Optional[str] = None,
 ) -> str:
     """
     Build a deterministic, rule-based draft summary from structured stats.
     Ensures subject scores and behaviour ratings are kept separate.
     """
-    total = stats.get("row_count", 0)
+    # Use a shallow copy to prevent modification issues
+    local_stats = copy.copy(stats)
+    total = local_stats.get("row_count", 0)
+
     if total == 0 and extracted_text:
         total = 1
 
-    student_name = stats.get("student_name", "Unknown Student")
-    student_details = stats.get("student_details", {}) or {}
-    activities = stats.get("activities", []) or []
+    student_name = local_stats.get("student_name", "Unknown Student")
+    student_details = local_stats.get("student_details", {}) or {}
+    activities = local_stats.get("activities", []) or []
 
-    # Subjects: prefer structured 'averages' or 'subjects', otherwise extract from text
-    subjects = stats.get("averages") or stats.get("subjects") or {}
+    subjects = (
+            local_stats.get("averages")
+            or local_stats.get("subjects")
+            or {}
+    )
+
     if not subjects and extracted_text:
         subjects = extract_subject_scores(extracted_text)
-        stats["averages"] = subjects
 
-    # Behaviour: prefer structured 'behaviour', otherwise extract from text
-    behaviour_traits = stats.get("behaviour") or {}
+    behaviour_traits = local_stats.get("behaviour") or {}
     if not behaviour_traits and extracted_text:
-        behaviour_traits = extract_behaviour_pairs(extracted_text)
-        stats["behaviour"] = behaviour_traits
+        behaviour_traits = extract_behaviour_pairs(text=extracted_text)
 
-    strongest = stats.get("strength")
-    weakest = stats.get("weakness")
+    strongest = local_stats.get("strength")
+    weakest = local_stats.get("weakness")
 
     student_details_sentence = format_student_details(student_details)
-
-    # Gender-aware pronouns
     gender = None
+
     if isinstance(student_details, dict):
         gender = student_details.get("Gender")
     else:
@@ -198,9 +230,9 @@ def build_detailed_educational_insight(
     pronoun_subject = "She" if gender == "Female" else "He"
 
     parts = []
-    parts.append(f"{student_name}, {student_details_sentence}, demonstrates consistent academic engagement.")
+    parts.append(
+        f"{student_name}, {student_details_sentence or 'the student'}, demonstrates consistent academic engagement.")
 
-    # Academic performance paragraph
     if subjects:
         strongest_t = translate_subject_name(strongest) if strongest else None
         weakest_t = translate_subject_name(weakest) if weakest else None
@@ -215,7 +247,6 @@ def build_detailed_educational_insight(
             parts.append(
                 f"{pronoun_possessive.capitalize()} academic performance shows an area for improvement in {weakest_t}.")
 
-        # Add subject scores list (stable ordering)
         if isinstance(subjects, dict) and subjects:
             subject_items = sorted(subjects.items(), key=lambda x: x[0])
             subject_scores = "; ".join([f"{translate_subject_name(sub)}: {score:.1f}" for sub, score in subject_items])
@@ -223,12 +254,10 @@ def build_detailed_educational_insight(
     else:
         parts.append("No subject-wise numeric performance data was detected.")
 
-    # Behaviour traits (qualitative only)
     behaviour_summary = format_behaviour_traits(behaviour_traits, gender)
     if behaviour_summary:
         parts.append(behaviour_summary)
 
-    # Activities
     if activities:
         if len(activities) == 1:
             activity_str = activities[0]
@@ -236,6 +265,7 @@ def build_detailed_educational_insight(
             activity_str = f"{activities[0]} and {activities[1]}"
         else:
             activity_str = ", ".join(activities[:-1]) + f", and {activities[-1]}"
+
         parts.append(
             f"Beyond academics, {pronoun_subject.lower()} participates in {activity_str}, reflecting balanced personal development.")
 
@@ -245,31 +275,69 @@ def build_detailed_educational_insight(
 
 
 # -------------------------
-# LLM polishing (Google Gemini)
+# LLM polishing (Secure Gemini)
 # -------------------------
+def improve_with_llm(
+        summary: str,
+        stats: Dict[str, Any],
+) -> str:
+    """
+    Improve summary using secure Gemini pipeline with PII protection,
+    audit logging, and secure transport rules.
+    """
+    # 1. Clean data payloads using your updated PII layer beforehand
+    safe_student_context = pii_protector.anonymize_student_data(stats.get("student_details", {}))
+    safe_draft_summary = pii_protector.redact_pii(summary)
 
-def improve_with_llm(summary: str) -> str:
-    prompt = (
-        "Rewrite the following student performance summary so it is grammatically correct and natural. "
-        "Keep subject scores and behaviour ratings distinct. "
-        f"DRAFT: {summary}\n\n"
-        "Return only the polished paragraph."
+    # 2. Re-build explicit non-leaking engineering template instructions
+    safe_prompt = (
+        "Rewrite the following student performance summary to be grammatically correct and natural.\n"
+        "Ensure subject scores and behavioral descriptions remain separate.\n\n"
+        f"CONTEXT METADATA:\n- Student tracking verification: {safe_student_context.get('student_id', 'Anonymous')}\n\n"
+        f"DRAFT NARRATIVE:\n{safe_draft_summary}\n\n"
+        "Instructions:\n"
+        "Do NOT mention real identities or private data keys. Return ONLY the single clean polished paragraph."
     )
 
     try:
-        from google import genai
-        import streamlit as st
-        api_key = st.secrets["GEMINI_API_KEY"]
-        client = genai.Client(api_key=api_key)
+        start_time = time.time()
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
+        audit_logger.log_data_processing(
+            "ANONYMIZATION",
+            1,
+            pii_redacted=len(pii_protector.redacted_map),
         )
 
-        return response.text.strip() if response.text else summary
+        # Main API call execution (keeping model selection controlled by downstream wrappers)
+        response = secure_client.call_gemini_secure(safe_prompt)
+        response_time = (time.time() - start_time) * 1000
+
+        audit_logger.log_api_call(
+            api_service="Google Gemini",
+            endpoint="/generateContent",
+            request_size=len(safe_prompt),
+            response_time_ms=response_time,
+            status_code=200 if response else 500,
+            pii_protected=True,
+        )
+
+        if response:
+            audit_logger.log_summary_generation(
+                input_size=len(safe_prompt),
+                output_size=len(response),
+                model="gemini-3.5-flash",
+                tokens_used=int(len(response.split()) * 1.3),
+            )
+            return response.strip()
+
+        return summary
 
     except Exception as e:
+        audit_logger.log_error(
+            error_type=type(e).__name__,
+            message=str(e),
+            stage="SUMMARIZATION",
+        )
         st.error(f"AI Polishing Error: {e}")
         return summary
 
@@ -277,11 +345,19 @@ def improve_with_llm(summary: str) -> str:
 # -------------------------
 # Mock summary
 # -------------------------
-def generate_mock_summary(stats: Dict[str, Any], extracted_text: Optional[str]) -> str:
+def generate_mock_summary(
+        stats: Dict[str, Any],
+        extracted_text: Optional[str],
+) -> str:
     total = stats.get("row_count", 0)
     if total == 0 and extracted_text:
         total = 1
-    return f"The dataset contains {total} record{'s' if total > 1 else ''} across {stats.get('column_count', 0)} features. Overall learning performance appears stable."
+
+    return (
+        f"The dataset contains {total} record{'s' if total > 1 else ''} "
+        f"across {stats.get('column_count', 0)} features. "
+        f"Overall learning performance appears stable."
+    )
 
 
 # -------------------------
@@ -291,15 +367,15 @@ def generate_summary(
         stats: Dict[str, Any],
         extracted_text: Optional[str] = None,
         mode: str = "insight",
-        use_llm: bool = True
+        use_llm: bool = True,
 ) -> str:
     """
-    Public API for generating summaries.
+    Public API for generating student insight summaries.
     """
     if mode == "insight":
         draft = build_detailed_educational_insight(stats, extracted_text)
         if use_llm:
-            return improve_with_llm(draft)
+            return improve_with_llm(draft, stats)
         return draft
 
     if mode == "mock":

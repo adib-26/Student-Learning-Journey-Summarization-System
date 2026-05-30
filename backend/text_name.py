@@ -114,7 +114,7 @@ def _validate_name_with_gemini(extracted_name: str, full_text: str) -> str:
         """
 
         response = client.models.generate_content(
-            model="gemini-2.0-flash",  # or your preferred version
+            model="gemini-3.5-flash",  # or your preferred version
             contents=prompt,
         )
         return response.text.strip()
