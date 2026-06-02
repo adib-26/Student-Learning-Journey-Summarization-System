@@ -33,13 +33,13 @@ try:
 
     # Priority checklist for multi-language local project font paths, fallback to systems
     POSSIBLE_FONT_PATHS = [
-        os.path.join(os.getcwd(), "fonts", "NotoSansTC-Regular.ttf"),      # Local Project Workspace CJK
-        os.path.join(os.getcwd(), "fonts", "NotoSans-Regular.ttf"),        # Local Project Workspace Latin
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",                  # Linux / Ubuntu standard
+        os.path.join(os.getcwd(), "fonts", "NotoSansTC-Regular.ttf"),  # Local Project Workspace CJK
+        os.path.join(os.getcwd(), "fonts", "NotoSans-Regular.ttf"),  # Local Project Workspace Latin
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Linux / Ubuntu standard
         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",  # Linux alternate
-        "C:\\Windows\\Fonts\\arial.ttf",                                    # Windows
-        "/System/Library/Fonts/Supplemental/Arial.ttf",                    # macOS (Newer)
-        "/Library/Fonts/Arial.ttf"                                          # macOS (Older)
+        "C:\\Windows\\Fonts\\arial.ttf",  # Windows
+        "/System/Library/Fonts/Supplemental/Arial.ttf",  # macOS (Newer)
+        "/Library/Fonts/Arial.ttf"  # macOS (Older)
     ]
 
     # Try to load an external TrueType font to support multi-language characters safely
@@ -223,7 +223,18 @@ def get_report_bytes(
     if df is None:
         df = pd.DataFrame()
 
+    # --- FIXED: EXTRACT & TRANSLATE TOP 5 DATAFRAME ON THE FLY ---
     top5_df = get_top5_numerical_rows(df)
+
+    if not top5_df.empty and current_lang != "en":
+        # Translate row subject labels safely
+        top5_df['Label'] = top5_df['Label'].apply(
+            lambda x: translator.translate_text(str(x), current_lang)
+        )
+        # Translate column names ('Label', 'Score') to match UI execution structure
+        top5_df.columns = [
+            translator.translate_text(col, current_lang) for col in top5_df.columns
+        ]
 
     if REPORTLAB_AVAILABLE:
         buffer = io.BytesIO()
@@ -337,14 +348,6 @@ def get_report_bytes(
             story.append(t2)
 
         story.append(Spacer(1, 10))
-
-        if student_info:
-            story.append(Paragraph(f"<b>{ui_translator.get_string('Student Details', current_lang)}</b>", small_bold))
-            for k, v in student_info.items():
-                if k == "Student Name":
-                    continue
-                story.append(Paragraph(f"<b>{_safe_text(k)}</b>: {_safe_text(v)}", normal))
-            story.append(Spacer(1, 10))
 
         if charts_images:
             story.append(Paragraph("<b>Charts</b>", small_bold))
