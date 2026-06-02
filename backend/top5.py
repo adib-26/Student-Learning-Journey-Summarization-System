@@ -2,6 +2,9 @@ import re
 import pandas as pd
 import streamlit as st
 
+# Import your active global translation engine safely
+from backend.deepl_translator import translator
+
 # -------------------------------------------------
 # EXTENDED 2-WORD HIGH SCHOOL SUBJECTS (SAFE LIST)
 # -------------------------------------------------
@@ -167,15 +170,32 @@ def get_top5_numerical_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # -------------------------------------------------
-# 3. SIMPLE STREAMLIT UI
+# 3. DYNAMICALLY TRANSLATED STREAMLIT UI
 # -------------------------------------------------
 def show_top5_ui(df: pd.DataFrame):
     """
-    Display top 5 results in Streamlit.
+    Display top 5 results dynamically translated into the active UI language.
     """
     top5 = get_top5_numerical_rows(df)
 
     if top5.empty:
         st.warning("No numeric performance data found.")
     else:
-        st.dataframe(top5, use_container_width=True)
+        # Resolve target language state variable from runtime context
+        current_lang = st.session_state.get("selected_language", "en")
+
+        # Clone data blocks to keep source structures clean
+        translated_top5 = top5.copy()
+
+        if current_lang != "en":
+            # Translate subject tokens row-by-row safely via DeepL CacheManager
+            translated_top5['Label'] = translated_top5['Label'].apply(
+                lambda x: translator.translate_text(str(x), current_lang)
+            )
+
+            # Translate structural column headers ('Label', 'Score') on the fly
+            translated_top5.columns = [
+                translator.translate_text(col, current_lang) for col in translated_top5.columns
+            ]
+
+        st.dataframe(translated_top5, use_container_width=True)

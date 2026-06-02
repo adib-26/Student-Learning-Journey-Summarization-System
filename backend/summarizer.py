@@ -1,9 +1,10 @@
 """
-Generate AI-powered educational summaries for student performance.
+Generate AI-powered educational summaries for student performance with multi-language translation.
 """
 import re
 import time
 import copy
+import logging
 from collections import defaultdict
 from typing import Any, Dict, Optional
 
@@ -12,6 +13,9 @@ import streamlit as st
 from .secure_gemini_client import SecureGeminiClient
 from .pii_protection import PIIProtector
 from .audit_logging import AuditLogger  # Aligned import filename
+from backend.deepl_translator import translator
+
+logger = logging.getLogger(__name__)
 
 # Try to import behaviour extractor from backend package; fallback to no-op.
 try:
@@ -308,13 +312,13 @@ def improve_with_llm(
             pii_redacted=len(pii_protector.redacted_map),
         )
 
-        # Main API call execution (keeping model selection controlled by downstream wrappers)
-        response = secure_client.call_gemini_secure(safe_prompt)
+        # Main API call execution
+        response = secure_client.call_gemini_secure(prompt=safe_prompt, model="gemini-2.5-flash")
         response_time = (time.time() - start_time) * 1000
 
         audit_logger.log_api_call(
             api_service="Google Gemini",
-            endpoint="/generateContent",
+            endpoint="call_gemini_secure",
             request_size=len(safe_prompt),
             response_time_ms=response_time,
             status_code=200 if response else 500,
@@ -325,7 +329,7 @@ def improve_with_llm(
             audit_logger.log_summary_generation(
                 input_size=len(safe_prompt),
                 output_size=len(response),
-                model="gemini-3.5-flash",
+                model="gemini-2.5-flash",
                 tokens_used=int(len(response.split()) * 1.3),
             )
             return response.strip()
@@ -336,7 +340,7 @@ def improve_with_llm(
         audit_logger.log_error(
             error_type=type(e).__name__,
             message=str(e),
-            stage="SUMMARIZATION",
+            stage="SUMMARY_GENERATION",
         )
         st.error(f"AI Polishing Error: {e}")
         return summary
@@ -368,20 +372,44 @@ def generate_summary(
         extracted_text: Optional[str] = None,
         mode: str = "insight",
         use_llm: bool = True,
-) -> str:
+        language: str = "en"
+) -> Optional[str]:
     """
-    Public API for generating student insight summaries.
+    Public API for generating student insight summaries with translation hooks.
     """
+    summary_text = None
+
     if mode == "insight":
         draft = build_detailed_educational_insight(stats, extracted_text)
         if use_llm:
-            return improve_with_llm(draft, stats)
-        return draft
+            summary_text = improve_with_llm(draft, stats)
+        else:
+            summary_text = draft
 
-    if mode == "mock":
-        return generate_mock_summary(stats, extracted_text)
+    elif mode == "mock":
+        summary_text = generate_mock_summary(stats, extracted_text)
 
-    raise ValueError(f"Invalid summary mode: {mode}")
+    else:
+        raise ValueError(f"Invalid summary mode: {mode}")
+
+    if not summary_text:
+        return None
+
+    # Handle multi-language routing with RobustTranslator fallback checks
+    if language != "en":
+        translated = translator.translate_text(summary_text, language)
+
+        if translated == summary_text:
+            logger.warning("Translation returned identical text. Engine fallback or quota limit hit.")
+            audit_logger.log_error(
+                error_type="TRANSLATION_FALLBACK",
+                message="Translation returned original English text. Checking API keys/quota.",
+                stage="SUMMARIZATION"
+            )
+
+        summary_text = translated
+
+    return summary_text
 
 
 __all__ = ["generate_summary"]
