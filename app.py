@@ -1,5 +1,4 @@
 # app.py — SECURE STRUCTURED DATA PIPELINE WITH PII PROTECTION & AUDIT LOGGING
-import os
 import uuid
 import streamlit as st
 import pandas as pd
@@ -9,6 +8,7 @@ from backend.ui_animations import inject_ui_animations, animated_summary
 # =====================================================
 # SECURE CLIENT, PII, & AUDIT LOG INTEGRATION
 # =====================================================
+from backend.text_info_extractor import _extract_certificate_data_with_gemini
 from backend.secure_gemini_client import SecureGeminiClient
 from backend.pii_protection import PIIProtector
 from backend.audit_logging import AuditLogger
@@ -49,7 +49,6 @@ from backend.behaviour_extractor import extract_behaviour_pairs
 
 from backend.text_info_extractor import get_student_name_from_text
 from backend.download import get_report_bytes, create_download_button
-from backend.text_info_extractor import get_text_info
 
 # =====================================================
 # STREAMLIT CONFIG
@@ -79,6 +78,11 @@ with col3_header:
         }[x],
         label_visibility="collapsed"
     )
+
+    # Store previous language to detect changes
+    if "previous_lang" not in st.session_state:
+        st.session_state.previous_lang = lang
+
     st.session_state.selected_language = lang
 
 current_lang = st.session_state.selected_language
@@ -106,8 +110,6 @@ else:
 safe_drop_text = drop_text.replace('\\', '\\\\').replace('"', '\\"')
 safe_browse_text = browse_text.replace('\\', '\\\\').replace('"', '\\"')
 
-# FIXED: Scope button styling explicitly to the file uploader dropzone container
-# to protect standard down-stream st.download_button widgets.
 st.markdown(f"""
     <style>
         div[data-testid="stFileUploaderDropzoneInstructions"] span.st-emotion-cache-ysg2um {{
@@ -143,9 +145,19 @@ uploaded_file = st.file_uploader(
 )
 
 # =====================================================
-# STATEFUL PIPELINE RESOLUTION BLOCK
+# 🔥 FIXED STATE MANAGEMENT (PRESERVE DATA ON LANGUAGE CHANGE)
 # =====================================================
-# If a brand-new file is provided, update the tracking session memory cache
+
+# Initialize tracking flag
+if "file_active" not in st.session_state:
+    st.session_state["file_active"] = False
+
+# Detect if language changed in this run
+language_changed = (st.session_state.get("previous_lang") != current_lang)
+# Update previous language for next run
+st.session_state.previous_lang = current_lang
+
+# CASE 1: NEW FILE UPLOADED
 if uploaded_file is not None:
     file_name = uploaded_file.name.lower()
     file_bytes = uploaded_file.read()
@@ -158,7 +170,7 @@ if uploaded_file is not None:
         file_type=uploaded_file.type
     )
 
-    # Initialize or reset the local caching cache keys inside session memory state
+    # Store in session state
     st.session_state["cached_file_name"] = file_name
     st.session_state["cached_file_bytes"] = file_bytes
     st.session_state["cached_raw_uploader"] = uploaded_file
@@ -168,7 +180,30 @@ if uploaded_file is not None:
     st.session_state["processed_metadata"] = None
     st.session_state["processed_extracted_text"] = None
 
-# If there is no active file selection or cached content arrays, safe-stop deployment execution
+    # Mark active file session
+    st.session_state["file_active"] = True
+
+# CASE 2: NO FILE IN UPLOADER
+else:
+    # If we have an active file but the uploader is now empty...
+    if st.session_state.get("file_active", False):
+        # ... and the language has NOT changed → user clicked X
+        if not language_changed:
+            # ONLY clear when user explicitly cleared the uploader
+            st.session_state.pop("cached_file_name", None)
+            st.session_state.pop("cached_file_bytes", None)
+            st.session_state.pop("cached_raw_uploader", None)
+
+            st.session_state.pop("processed_df", None)
+            st.session_state.pop("processed_metadata", None)
+            st.session_state.pop("processed_extracted_text", None)
+
+            st.session_state["file_active"] = False
+
+            st.rerun()  # clean reset
+        # else: language changed → keep all cached data, do nothing
+
+# STOP if nothing loaded
 if "cached_file_bytes" not in st.session_state:
     st.stop()
 
@@ -237,11 +272,10 @@ if df is None or df.empty:
         </div>
         """, unsafe_allow_html=True)
 
-        from backend.text_info_extractor import _extract_certificate_data_with_gemini
-        from backend.chart import render_visualizations
+
 
         loading_msg = ui_translator.get_string("📜 Running encrypted processing pipelines...", current_lang)
-        with st.spinner(loading_msg):
+        with st.spinner(loading_msg):  # type: ignore
             safe_text_source = pii_protector.redact_pii(text_source)
             redacted_count = len(pii_protector.redacted_map)
 
@@ -475,7 +509,7 @@ try:
     start_time = time.time()
 
     insight_msg = ui_translator.get_string("🔒 Generating secure encrypted insight narrative...", current_lang)
-    with st.spinner(insight_msg):
+    with st.spinner(insight_msg):  # type: ignore
         summary = secure_client.call_gemini_secure(
             prompt=safe_prompt,
             model="gemini-2.5-flash"

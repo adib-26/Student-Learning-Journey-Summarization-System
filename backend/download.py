@@ -2,12 +2,14 @@
 import io
 import os
 import textwrap
-from typing import List, Optional, Sequence, Any
-from datetime import datetime
-
 import pandas as pd
 import streamlit as st
-
+from typing import List, Optional, Sequence, Any
+from datetime import datetime
+from PIL import Image as PILImage
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from backend.top5 import get_top5_numerical_rows
 from backend.deepl_translator import ui_translator, translator
 
@@ -25,33 +27,66 @@ try:
         Image as RLImage,
         PageBreak,
     )
-    from PIL import Image as PILImage
+
 
     # --- UNICODE FONT REGISTRATION SYSTEM ---
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
 
-    # Priority checklist for multi-language local project font paths, fallback to systems
-    POSSIBLE_FONT_PATHS = [
-        os.path.join(os.getcwd(), "fonts", "NotoSansTC-Regular.ttf"),  # Local Project Workspace CJK
-        os.path.join(os.getcwd(), "fonts", "NotoSans-Regular.ttf"),  # Local Project Workspace Latin
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Linux / Ubuntu standard
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",  # Linux alternate
-        "C:\\Windows\\Fonts\\arial.ttf",  # Windows
-        "/System/Library/Fonts/Supplemental/Arial.ttf",  # macOS (Newer)
-        "/Library/Fonts/Arial.ttf"  # macOS (Older)
-    ]
 
-    # Try to load an external TrueType font to support multi-language characters safely
     CHOSEN_FONT = "Helvetica"
-    for path in POSSIBLE_FONT_PATHS:
-        if os.path.exists(path):
-            try:
-                pdfmetrics.registerFont(TTFont("AppMultiLanguageFont", path))
-                CHOSEN_FONT = "AppMultiLanguageFont"
-                break
-            except Exception:
-                continue
+
+    try:
+        # Traditional Chinese
+        pdfmetrics.registerFont(
+            UnicodeCIDFont("MSung-Light")
+        )
+        CHOSEN_FONT = "MSung-Light"
+
+    except Exception:
+        try:
+            # Simplified Chinese fallback
+            pdfmetrics.registerFont(
+                UnicodeCIDFont("STSong-Light")
+            )
+            CHOSEN_FONT = "STSong-Light"
+
+        except Exception:
+
+            FONT_CANDIDATES = [
+                os.path.join(
+                    os.getcwd(),
+                    "fonts",
+                    "NotoSansTC-Regular.ttf",
+                ),
+                os.path.join(
+                    os.getcwd(),
+                    "fonts",
+                    "NotoSansSC-Regular.ttf",
+                ),
+                os.path.join(
+                    os.getcwd(),
+                    "fonts",
+                    "NotoSansCJKtc-Regular.otf",
+                ),
+                os.path.join(
+                    os.getcwd(),
+                    "fonts",
+                    "NotoSansCJKsc-Regular.otf",
+                ),
+            ]
+
+            for font_path in FONT_CANDIDATES:
+                if os.path.exists(font_path):
+                    try:
+                        pdfmetrics.registerFont(
+                            TTFont(
+                                "AppMultiLanguageFont",
+                                font_path,
+                            )
+                        )
+                        CHOSEN_FONT = "AppMultiLanguageFont"
+                        break
+                    except Exception:
+                        pass
 
     REPORTLAB_AVAILABLE = True
 except Exception:

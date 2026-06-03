@@ -329,7 +329,7 @@ def improve_with_llm(
             audit_logger.log_summary_generation(
                 input_size=len(safe_prompt),
                 output_size=len(response),
-                model="gemini-2.5-flash",
+                model="gemini-3.5-flash",
                 tokens_used=int(len(response.split()) * 1.3),
             )
             return response.strip()

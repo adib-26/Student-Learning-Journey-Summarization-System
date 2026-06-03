@@ -1,6 +1,6 @@
 import pandas as pd
 import re
-from typing import List, Optional
+from typing import Optional
 
 # -----------------------------
 # Normalizer: robust OCR + structured handling
@@ -31,36 +31,9 @@ SECTION_HEADERS = {
     "behaviour": "Behaviour",
     "behavior": "Behaviour",
     "co-curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
-    "co curricular": "Co-curricular",
     "co curricular": "Co-curricular"
 }
-# (Note: above repeated keys are harmless; kept to be tolerant of OCR variants)
+# (Note: keys handle common OCR variants - hyphen vs space)
 
 def _is_section_header(line: str) -> Optional[str]:
     """Return canonical section name if line looks like a section header."""
@@ -122,7 +95,7 @@ def normalize_uploaded_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     canonical = ["Section", "Label", "Score", "Maximum", "Notes"]
 
     # Case 1: already structured with Section+Label
-    if set(["Section", "Label"]).issubset(df.columns):
+    if {"Section", "Label"}.issubset(df.columns):
         out = df.copy()
         for col in canonical:
             if col not in out.columns:
