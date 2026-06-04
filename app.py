@@ -222,7 +222,7 @@ extracted_text = st.session_state.get("processed_extracted_text")
 if df is None and extracted_text is None:
     try:
         if file_name.endswith(("png", "jpg", "jpeg")):
-            st.image(Image.open(active_file_object), use_container_width=True)
+            # st.image(Image.open(active_file_object), use_container_width=True) # Removed to prevent duplication
             extracted_text = extract_text_from_image(active_file_object)
             df = parse_ocr_text_to_dataframe(extracted_text)
         else:

@@ -7,9 +7,9 @@
     <list default="true" id="1c0867b6-9e1e-427d-b9bb-d87eb9f16500" name="Changes" comment=" Report Update">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/download.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/download.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/normalizer.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/normalizer.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/summarizer.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/summarizer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/analytics_statistics.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/analytics_statistics.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/data_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data_loader.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/student_info_extractor.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/student_info_extractor.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -177,7 +177,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780389493066</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary=" Report Update">
+      <option name="closed" value="true" />
+      <created>1780461818008</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1780461818008</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">

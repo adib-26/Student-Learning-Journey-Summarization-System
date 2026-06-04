@@ -15,10 +15,14 @@ from .data_processing import (
 def compute_statistics(df: pd.DataFrame) -> Dict[str, Any]:
     """
     Compute statistics and extract metadata from DataFrame.
+    Prefers structured Value cells for metadata (e.g., Student Name)
+    and only falls back to text parsing when necessary.
     """
     df = df.copy()
+    # Normalize column names
     df.columns = df.columns.astype(str).str.strip()
 
+    # Normalize string cells
     for col in df.columns:
         if df[col].dtype == "object":
             df[col] = df[col].astype(str).str.strip()
@@ -49,27 +53,81 @@ def compute_statistics(df: pd.DataFrame) -> Dict[str, Any]:
         stats["std_dev"] = numeric_df.std(ddof=0).dropna().to_dict()
         stats["counts"] = numeric_df.count().dropna().to_dict()
 
-    # Metadata extraction
+    # Metadata extraction (student name, gender, state)
     gender = None
     state = None
-    if "Label" in df.columns:
-        for _, row in df.iterrows():
-            label = row.get("Label", "")
-            value = row.get("Value", "")
-            text = f"{label} {value}".strip()
 
-            if "name" in label.lower():
-                extracted_name = extract_full_name(text)
+    def set_student_name_if_missing(name_candidate: str):
+        if not name_candidate:
+            return
+
+        candidate = str(name_candidate).strip()
+        if not candidate:
+            return
+
+        # Prevent metadata values from becoming names
+        forbidden = {
+            "grade",
+            "class",
+            "section",
+            "gender",
+            "state",
+            "subject",
+            "score",
+            "activity",
+            "activities",
+            "co curricular",
+            "co-curricular",
+        }
+
+        if candidate.lower() in forbidden:
+            return
+
+        if not stats.get("student_name"):
+            stats["student_name"] = candidate
+
+    if "Label" in df.columns:
+        # PASS 1: Explicit Student Name row only
+        student_name_rows = df[
+            df["Label"].astype(str).str.strip().str.lower() == "student name"
+        ]
+
+        if not student_name_rows.empty:
+            value = str(student_name_rows.iloc[0].get("Value", "")).strip()
+            if value and not contains_metadata_keyword(value):
+                stats["student_name"] = value
+
+        # PASS 2: Fallback search only if name not found
+        if not stats.get("student_name"):
+            for _, row in df.iterrows():
+                label = str(row.get("Label", "")).strip()
+                value = str(row.get("Value", "")).strip()
+                combined_text = f"{label} {value}"
+
+                extracted_name = extract_full_name(combined_text)
                 if extracted_name:
                     stats["student_name"] = extracted_name
-                elif looks_like_name(text):
-                    stats["student_name"] = value or label
+                    break
 
-            g = extract_gender(text)
+                if (
+                    value
+                    and looks_like_name(value)
+                    and not contains_metadata_keyword(value)
+                ):
+                    stats["student_name"] = value
+                    break
+
+        # PASS 3: Gender + State
+        for _, row in df.iterrows():
+            label = str(row.get("Label", "")).strip()
+            value = str(row.get("Value", "")).strip()
+            combined_text = f"{label} {value}"
+
+            g = extract_gender(combined_text)
             if g:
                 gender = g
 
-            s = extract_state(text)
+            s = extract_state(combined_text)
             if s:
                 state = s
 
@@ -81,8 +139,8 @@ def compute_statistics(df: pd.DataFrame) -> Dict[str, Any]:
     if details:
         stats["student_details"] = ", ".join(details)
 
-    # Subjects
-    if "Section" in df.columns and "Score" in df.columns:
+    # Subjects extraction
+    if "Section" in df.columns and "Score" in df.columns and "Label" in df.columns:
         subject_rows = df[df["Section"].str.contains("Subjects", case=False, na=False)]
         if not subject_rows.empty:
             subject_rows = subject_rows.copy()
@@ -93,21 +151,34 @@ def compute_statistics(df: pd.DataFrame) -> Dict[str, Any]:
             valid_scores = {}
 
             for _, row in subject_rows.iterrows():
-                raw_label = row.get("Label", "")
+                raw_label = row.get("Label", "") or ""
                 score = row.get("Score")
+                label_text = raw_label.strip()
 
-                tokens = raw_label.split()
+                tokens = re.split(r"[\s:/\-()]+", label_text)
+                tokens = [t for t in tokens if t]
                 last_word = tokens[-1] if tokens else ""
-                if is_valid_subject(last_word):
-                    valid_subjects.append(last_word)
-                    valid_scores[last_word] = score
+
+                if last_word and is_valid_subject(last_word):
+                    subj = last_word
+                    valid_subjects.append(subj)
+                    valid_scores[subj] = score
                     continue
 
-                for subj in KNOWN_SUBJECTS_CS:
-                    if subj in raw_label:
-                        valid_subjects.append(subj)
-                        valid_scores[subj] = score
+                matched = None
+                for subj in sorted(KNOWN_SUBJECTS_CS, key=lambda s: -len(s)):
+                    if subj.lower() in label_text.lower():
+                        matched = subj
                         break
+                if matched:
+                    valid_subjects.append(matched)
+                    valid_scores[matched] = score
+                    continue
+
+                value_field = (row.get("Value") or "").strip()
+                if value_field and is_valid_subject(value_field):
+                    valid_subjects.append(value_field)
+                    valid_scores[value_field] = score
 
             stats["subjects"] = valid_subjects
             stats["subject_scores"] = valid_scores
@@ -116,16 +187,17 @@ def compute_statistics(df: pd.DataFrame) -> Dict[str, Any]:
                 stats["strength"] = max(valid_scores, key=valid_scores.get)
                 stats["weakness"] = min(valid_scores, key=valid_scores.get)
 
-    # Activities
+    # Activities / co-curricular extraction
     valid_activities = []
     for _, row in df.iterrows():
-        label = row.get("Label", "")
-        section = row.get("Section", "")
+        raw_label = row.get("Label", "") or ""
+        section = row.get("Section", "") or ""
 
+        label = raw_label.strip()
         if not label:
             continue
 
-        parts = re.split(r"\s*\|\s*|/", label)
+        parts = re.split(r"\s*\|\s*|/|;|,", label)
         for part in parts:
             part = part.strip()
             if not part:
@@ -135,7 +207,7 @@ def compute_statistics(df: pd.DataFrame) -> Dict[str, Any]:
                 valid_activities.append(part)
                 continue
 
-            if re.search(r"Co-?curricular|Activity|Activities", str(section), flags=re.IGNORECASE):
+            if re.search(r"Co-?curricular|Co Curricular|Activity|Activities", str(section), flags=re.IGNORECASE):
                 if not contains_metadata_keyword(part):
                     valid_activities.append(part)
 

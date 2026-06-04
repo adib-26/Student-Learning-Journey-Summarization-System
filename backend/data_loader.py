@@ -42,46 +42,79 @@ def extract_text_from_image(image_file) -> str:
 def extract_metadata_from_excel(df_raw: pd.DataFrame) -> Dict[str, str]:
     """
     Extract metadata from the top rows of an Excel file before the data table.
+    Assumes a structure where:
+        - Column 0 = Section (e.g., "Student Details", "Subjects")
+        - Column 1 = Label (e.g., "Student Name", "Gender")
+        - Column 2 = Value (e.g., "Nur Aisyah Binti Rahman", "Female")
+    Stops when a row with Column 0 containing "Section" or "Subject" is found.
 
     Args:
         df_raw: DataFrame read without header (header=None)
 
     Returns:
-        Dictionary with metadata like {"Student Name": "Ahmad Daniel", "Gender": "Male"}
+        Dictionary with metadata like {"Student Name": "Nur Aisyah Binti Rahman", "Gender": "Female"}
     """
     metadata = {}
 
-    # Strategy 1: Check if name is in column headers (read normally)
-    try:
-        df_with_headers = pd.DataFrame(df_raw.values[1:], columns=df_raw.iloc[0])
-        for col in df_with_headers.columns:
-            if pd.notna(col) and not str(col).startswith('Unnamed'):
-                col_str = str(col).strip()
-                # Check if this looks like a name (2+ capitalized words)
-                tokens = re.findall(r"[A-Z][a-zA-Z]+", col_str)
-                if len(tokens) >= 2:
-                    # This might be a name in the column header
-                    metadata['Student Name'] = col_str
-    except:
-        pass
+    # Known labels we want to extract (case-insensitive mapping to output keys)
+    wanted_labels = {
+        "student name": "Student Name",
+        "gender": "Gender",
+        "nationality": "Nationality",
+        "school level": "School Level",
+        "form": "Form",
+        "state": "State",
+        "attendance rate (%)": "Attendance Rate (%)",
+        "attendance rate": "Attendance Rate (%)"
+    }
 
-    # Strategy 2: Extract from label-value pairs in rows
-    for idx in range(min(15, len(df_raw))):
+    # Scan first 20 rows (metadata is usually in the first few rows)
+    for idx in range(min(20, len(df_raw))):
         row = df_raw.iloc[idx]
+        if len(row) < 3:
+            continue
 
-        # Skip rows that look like table headers
-        row_str = ' '.join(str(cell).lower() for cell in row if pd.notna(cell))
-        if any(keyword in row_str for keyword in ['section', 'label', 'score', 'maximum']):
+        # Get the first cell (Section column) to detect the table header
+        section_cell = str(row.iloc[0]).strip().lower() if pd.notna(row.iloc[0]) else ""
+
+        # Stop when we reach a row that marks the start of the data table
+        if section_cell in ["section", "subject", "subjects", "behaviour", "co-curricular"]:
             break
 
-        # Extract label-value pairs
-        if pd.notna(row.iloc[0]) and pd.notna(row.iloc[1]):
-            label = str(row.iloc[0]).strip().rstrip(':')
-            value = str(row.iloc[1]).strip()
+        # Extract label (column 1) and value (column 2)
+        label_cell = str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else ""
+        value_cell = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else ""
 
-            # Only store if value is not 'nan' and not the same as label
-            if value and value.lower() != 'nan' and value != label:
-                metadata[label] = value
+        if not label_cell or not value_cell or value_cell.lower() == "nan":
+            continue
+
+        # Try to match against known labels
+        label_lower = label_cell.lower()
+        matched = False
+        for key_lower, output_key in wanted_labels.items():
+            if key_lower in label_lower:
+                metadata[output_key] = value_cell
+                matched = True
+                break
+
+        # If not a known label but still might be useful (e.g., "School Name"?)
+        # But avoid capturing "Student Details" etc.
+        if not matched and label_lower not in ["student details", "details"]:
+            # Store as is, capitalising the label
+            metadata[label_cell] = value_cell
+
+    # Special fallback: if Student Name still missing, brute-force search
+    if "Student Name" not in metadata:
+        for idx in range(min(20, len(df_raw))):
+            row = df_raw.iloc[idx]
+            if len(row) < 3:
+                continue
+            label = str(row.iloc[1]).strip().lower()
+            if "student name" in label:
+                candidate = str(row.iloc[2]).strip()
+                if candidate and candidate.lower() not in ["nan", ""]:
+                    metadata["Student Name"] = candidate
+                    break
 
     return metadata
 
