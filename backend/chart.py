@@ -15,19 +15,37 @@ from backend.deepl_translator import translator, ui_translator
 # Helper for plotting
 # -----------------------------
 def prepare_plot_df(df: pd.DataFrame, x_col: Optional[str], y_col: str) -> pd.DataFrame:
+    """Prepare a true data slice for statistics by filtering for valid X and Y data, but NOT grouping."""
+    if not x_col or not y_col or x_col not in df.columns or y_col not in df.columns:
+        return pd.DataFrame()
+
+    # Create a copy to avoid modifying the original DataFrame
     plot_df = df.copy()
 
-    if y_col not in plot_df.columns:
-        return plot_df.iloc[0:0]
-
+    # Coerce Y to numeric and drop rows where Y is NaN
     plot_df[y_col] = pd.to_numeric(plot_df[y_col], errors="coerce")
-    plot_df = plot_df[plot_df[y_col].notna()]
+    
+    # Also coerce X to numeric if it's not an object type, to handle cases where X might be a score
+    if plot_df[x_col].dtype != 'object':
+        plot_df[x_col] = pd.to_numeric(plot_df[x_col], errors='coerce')
 
-    if x_col and x_col in plot_df.columns:
-        if plot_df[x_col].dtype == "object" or not plot_df[x_col].is_unique:
-            return plot_df.groupby(x_col, dropna=False)[y_col].mean().reset_index()
+    # Drop rows where EITHER x_col or y_col is NaN, creating a true data slice
+    plot_df.dropna(subset=[x_col, y_col], inplace=True)
 
     return plot_df
+
+def prepare_chart_data(df: pd.DataFrame, x_col: Optional[str], y_col: str) -> pd.DataFrame:
+    """Prepare grouped data specifically for chart plotting"""
+    chart_df = df.copy()
+    
+    if x_col and x_col in chart_df.columns:
+        # We need to use the original, non-numeric y_col data for grouping if it exists
+        if chart_df[x_col].dtype == "object" or not chart_df[x_col].is_unique:
+            # Ensure y_col is numeric before aggregation
+            chart_df[y_col] = pd.to_numeric(chart_df[y_col], errors="coerce")
+            return chart_df.groupby(x_col, dropna=False)[y_col].mean().reset_index()
+    
+    return chart_df
 
 
 # -----------------------------
@@ -90,11 +108,37 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
     )
     y_axis = [k for k, v in translated_y_cols_map.items() if v == selected_y_display][0]
 
-    # Prepare raw frame slice structures
-    plot_df = prepare_plot_df(cleaned_df, x_axis, y_axis)
+    # Auto-trigger summary update when ANY axis changes (X or Y, even if Y changes automatically)
+    current_selection = f"{x_axis}_{y_axis}"
+    last_selection = st.session_state.get('last_axis_selection', None)
+    
+    if current_selection != last_selection and x_axis and y_axis:
+        st.session_state['summary_needs_update'] = True
+        st.session_state['last_axis_selection'] = current_selection
+    
+    # Prepare a data slice for statistics, which preserves all subject rows for context
+    stats_df = prepare_plot_df(cleaned_df, x_axis, y_axis)
+    # From the stats_df, prepare the grouped and aggregated data needed for plotting
+    plot_df = prepare_chart_data(stats_df, x_axis, y_axis)
 
-    # --- 2. DEEP DATA LABELS LOCALIZATION PASS ---
+    # --- 2. UPDATE STATISTICS AND REGENERATE SUMMARY FOR SELECTED AXES ---
+    if x_axis and y_axis and not stats_df.empty:
+        # Recompute statistics for the filtered data (still preserves subject rows)
+        from backend.analytics_statistics import compute_statistics
+        updated_stats = compute_statistics(stats_df, x_axis, y_axis)
+        
+        # Pass updated stats to session state for summary regeneration
+        st.session_state['current_plot_stats'] = updated_stats
+        st.session_state['current_x_axis'] = x_axis
+        st.session_state['current_y_axis'] = y_axis
+    
+    # --- 3. DEEP DATA LABELS LOCALIZATION PASS ---
     localized_plot_df = plot_df.copy()
+    if localized_plot_df.empty:
+        # Don't attempt to plot an empty dataframe.
+        st.info(ui_translator.get_string("Please select Y axes to generate a chart.", current_lang))
+        return images
+
     if current_lang != "en":
         if x_axis and x_axis in localized_plot_df.columns and localized_plot_df[x_axis].dtype == "object":
             localized_plot_df[x_axis] = localized_plot_df[x_axis].apply(

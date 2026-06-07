@@ -327,6 +327,7 @@ UI_STRINGS = {
     'no_file': 'Please upload a file to get started.',
     'quota_warning': 'Translation quota running low!',
     'quota_exceeded': 'Monthly translation quota exceeded. Showing original content.',
+    'updating_summary': '🔄 Updating summary for your selected axes...',
 }
 
 

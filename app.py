@@ -2,6 +2,7 @@
 import uuid
 import streamlit as st
 import pandas as pd
+import re
 from PIL import Image
 from backend.ui_animations import inject_ui_animations, animated_summary
 
@@ -222,7 +223,7 @@ extracted_text = st.session_state.get("processed_extracted_text")
 if df is None and extracted_text is None:
     try:
         if file_name.endswith(("png", "jpg", "jpeg")):
-            # st.image(Image.open(active_file_object), use_container_width=True) # Removed to prevent duplication
+            # st.image(Image.open(active_file_object), width='stretch') # Removed to prevent duplication
             extracted_text = extract_text_from_image(active_file_object)
             df = parse_ocr_text_to_dataframe(extracted_text)
         else:
@@ -447,6 +448,10 @@ stats["student_details"] = {
 }
 stats["student_name"] = student_name
 
+# Store original full stats in session state for fallback (preserves strength/weakness and subject scores)
+if "original_stats" not in st.session_state:
+    st.session_state["original_stats"] = stats.copy()
+
 # =====================================================
 # METRICS
 # =====================================================
@@ -489,6 +494,77 @@ if isinstance(maybe_images, list):
 # =====================================================
 # AI SUMMARY (TUNED TO INTERCEPT VIA SECURE WRAPPER + PII)
 # =====================================================
+# Auto-update summary when axes/labels change - works with automatic Y-axis updates!
+if ('current_plot_stats' in st.session_state and st.session_state['current_plot_stats'] and 
+    st.session_state.get('summary_needs_update', False)):
+    # Use the filtered stats from the selected axes/labels
+    stats = st.session_state['current_plot_stats'].copy()
+    
+    # Preserve important student context AND core academic insights (strength/weakness)
+    # by merging with the original full-dataset stats
+    if 'original_stats' in st.session_state:
+        original = st.session_state['original_stats']
+        # Preserve student details from the full dataset
+        stats['student_details'] = original.get('student_details', student_info)
+        stats['student_name'] = original.get('student_name', student_name)
+        # Preserve behavior, trends, and predictions from the full dataset
+        stats['behaviour'] = original.get('behaviour', None)
+        stats['trends'] = original.get('trends', None)
+        stats['predictive_insights'] = original.get('predictive_insights', None)
+
+        # If the filtered data has no subjects, fall back to original strength/weakness
+        if 'strength' not in stats or not stats['strength']:
+            stats['strength'] = original.get('strength', None)
+        if 'weakness' not in stats or not stats['weakness']:
+            stats['weakness'] = original.get('weakness', None)
+
+    # Smartly filter averages based on the selected X-axis
+    x_axis = st.session_state.get('current_x_axis')
+    y_axis = st.session_state.get('current_y_axis')
+    if x_axis and 'averages' in stats:
+        # Determine the numeric suffix of the chosen X-axis (e.g., "Label 2" -> "2")
+        match = re.search(r'(\d+)$', x_axis)
+        x_suffix = match.group(1) if match else ''
+        
+        filtered_averages = {}
+        for key, value in stats['averages'].items():
+            # Determine the suffix of the average key (e.g., "Score 2" -> "2")
+            key_match = re.search(r'(\d+)$', key)
+            key_suffix = key_match.group(1) if key_match else ''
+            
+            # Keep the average if its suffix matches the X-axis suffix
+            if key_suffix == x_suffix:
+                filtered_averages[key] = value
+        
+        # Always include the Y-axis metric as it's the primary value being plotted
+        # but only if it doesn't have a conflicting suffix. If it's the generic "Score"
+        # and x_suffix exists, add it as "Score {x_suffix}" to keep consistency.
+        if y_axis and y_axis in stats['averages']:
+            y_key_match = re.search(r'(\d+)$', y_axis)
+            y_key_suffix = y_key_match.group(1) if y_key_match else ''
+            
+            # If the Y-axis is the base metric (no suffix) and we have an x_suffix,
+            # use the suffixed version of the key to avoid generic labels
+            if not y_key_suffix and x_suffix:
+                new_key = f"{y_axis} {x_suffix}"
+                # Only add if not already present to avoid duplicates
+                if new_key not in filtered_averages:
+                    filtered_averages[new_key] = stats['averages'][y_axis]
+            elif y_key_suffix == x_suffix:
+                # If it already has the correct suffix, just add it
+                filtered_averages[y_axis] = stats['averages'][y_axis]
+
+        stats['averages'] = filtered_averages
+
+    # Reset the flag after using the updated stats
+    st.session_state['summary_needs_update'] = False
+    
+    # Log that we're using filtered stats
+    audit_logger.log_data_processing(
+                stage="AUTO_UPDATED_SUMMARY",
+                records_processed=len(cleaned_df)
+            )
+
 safe_student_context = pii_protector.anonymize_student_data(student_info)
 safe_extracted_text = pii_protector.redact_pii(extracted_text or "")
 stats["summary_context"] = safe_extracted_text
@@ -508,7 +584,12 @@ try:
     import time
     start_time = time.time()
 
-    insight_msg = ui_translator.get_string("🔒 Generating secure encrypted insight narrative...", current_lang)
+    # Show different message for auto-updates vs initial load
+    if st.session_state.get('summary_needs_update', False) or 'last_axis_selection' in st.session_state:
+        insight_msg = ui_translator.get_string("updating_summary", current_lang)
+    else:
+        insight_msg = ui_translator.get_string("🔒 Generating secure encrypted insight narrative...", current_lang)
+    
     with st.spinner(insight_msg):  # type: ignore
         summary = secure_client.call_gemini_secure(
             prompt=safe_prompt,
@@ -532,6 +613,10 @@ except Exception as e:
     summary = generate_summary(stats, safe_extracted_text, mode="insight")
 
 translated_summary = translator.translate_text(summary, current_lang)
+
+
+
+
 animated_summary(translated_summary)
 
 audit_logger.log_summary_generation(

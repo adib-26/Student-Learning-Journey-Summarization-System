@@ -4,12 +4,18 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="1c0867b6-9e1e-427d-b9bb-d87eb9f16500" name="Changes" comment=" Report Update">
+    <list default="true" id="1c0867b6-9e1e-427d-b9bb-d87eb9f16500" name="Changes" comment=" Report Image Update">
+      <change afterPath="$PROJECT_DIR$/backend/render_charts.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/analytics_statistics.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/analytics_statistics.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/data_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data_loader.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/chart.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/chart.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/data_cleaning.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data_cleaning.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/data_processing.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data_processing.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/deepl_translator.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/deepl_translator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/normalizer.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/normalizer.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/student_info_extractor.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/student_info_extractor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/visualizations.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/visualizations.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -93,7 +99,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-python-sdk-83fa46d5d5d4-6d6dccd035ac-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.33514.19" />
+        <option value="bundled-python-sdk-929bdeb5c976-6d6dccd035ac-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-253.33813.30" />
       </set>
     </attachedChunks>
   </component>
@@ -185,7 +191,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780461818008</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary=" Report Image Update">
+      <option name="closed" value="true" />
+      <created>1780579400670</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1780579400670</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -207,14 +221,15 @@
     <MESSAGE value="Unstructured file update" />
     <MESSAGE value="Translationupdate" />
     <MESSAGE value=" Report Update" />
-    <option name="LAST_COMMIT_MESSAGE" value=" Report Update" />
+    <MESSAGE value=" Report Image Update" />
+    <option name="LAST_COMMIT_MESSAGE" value=" Report Image Update" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/app.py</url>
-          <line>5</line>
+          <line>6</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
       </breakpoints>

@@ -1,11 +1,10 @@
 # backend/data_processing.py
 import re
 import pandas as pd
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 try:
     import enchant
-
     ENCHANT_AVAILABLE = True
     EN_DICT = enchant.Dict("en_US")
 except ImportError:
@@ -68,7 +67,7 @@ def is_english_word(word: str) -> bool:
 
 
 def looks_like_name(text: str) -> bool:
-    tokens = re.findall(r"[A-Z][a-zA-Z]+", text)  # allow all-caps too
+    tokens = re.findall(r"[A-Z][a-zA-Z]+", text)
     if len(tokens) < 2:
         return False
     non_common = [t for t in tokens if t not in ENGLISH_COMMON_WORDS_CS]
@@ -89,10 +88,8 @@ def extract_full_name(text: str) -> Optional[str]:
     if not text:
         return None
 
-    # Normalize spacing
     text = re.sub(r"\s+", " ", text).strip()
 
-    # Case 1: structured label anywhere in the line (not just prefix)
     match = re.search(
         r"(Student\s+Name|Name)\s*[:\-]?\s*(.+)",
         text,
@@ -103,19 +100,15 @@ def extract_full_name(text: str) -> Optional[str]:
     else:
         remainder = text
 
-    # Tokenize capitalized words
     tokens = re.findall(r"[A-Z][a-zA-Z]+", remainder)
     if len(tokens) < 2:
         return None
 
     name_parts = []
     for token in tokens:
-        # Stop on metadata / subjects (hard boundary)
-        if (
-                token in METADATA_KEYWORDS_CS
+        if (token in METADATA_KEYWORDS_CS
                 or token in KNOWN_SUBJECTS_CS
-                or token in CO_CURRICULAR_KEYWORDS_CS
-        ):
+                or token in CO_CURRICULAR_KEYWORDS_CS):
             break
         name_parts.append(token)
 
@@ -125,9 +118,69 @@ def extract_full_name(text: str) -> Optional[str]:
     return None
 
 
+# -------------------------------------------------
+# IMPROVED GENDER EXTRACTION (the main fix)
+# -------------------------------------------------
 def extract_gender(text: str) -> Optional[str]:
-    match = re.search(r"\b(Male|Female|Prefer not to say)\b", text, flags=re.IGNORECASE)
-    return match.group(1).title() if match else None
+    """
+    Improved gender extraction from raw text.
+    Handles: Male, Female, M, F, 'L' (for Lelaki), 'P' (Perempuan), etc.
+    Returns standardized 'Male' or 'Female'.
+    """
+    if not text:
+        return None
+
+    # Lowercase for case‑insensitive matching
+    lower_text = text.lower()
+
+    # Common patterns: label + value
+    patterns = [
+        r'\bgender\s*[:\-]?\s*(male|female|m|f|lelaki|perempuan)\b',
+        r'\bsex\s*[:\-]?\s*(male|female|m|f)\b',
+        r'\b(jantina)\s*[:\-]?\s*(lelaki|perempuan|l|p)\b',
+        r'\b(male|female|m|f)\b',   # simple standalone
+    ]
+
+    for pat in patterns:
+        match = re.search(pat, lower_text)
+        if match:
+            raw = match.group(1) if len(match.groups()) >= 1 else match.group(0)
+            if raw in ('male', 'm', 'lelaki', 'l'):
+                return 'Male'
+            if raw in ('female', 'f', 'perempuan', 'p'):
+                return 'Female'
+
+    return None
+
+
+def extract_gender_from_label_value(df: pd.DataFrame,
+                                     label_col: Optional[str] = None,
+                                     value_col: Optional[str] = None) -> Optional[str]:
+    """
+    Extract gender directly from a Label/Value structured DataFrame.
+    Looks for rows where label contains 'gender' or 'sex' (case‑insensitive)
+    and returns the corresponding value.
+    """
+    if df is None or df.empty:
+        return None
+
+    # Auto‑detect Label/Value columns if not provided
+    if label_col is None or value_col is None:
+        for col in df.columns:
+            col_lower = str(col).strip().lower()
+            if col_lower == 'label':
+                label_col = col
+            elif col_lower == 'value':
+                value_col = col
+
+    if label_col is not None and value_col is not None:
+        for _, row in df.iterrows():
+            label = str(row[label_col]).strip().lower() if pd.notna(row[label_col]) else ''
+            value = str(row[value_col]).strip() if pd.notna(row[value_col]) else ''
+            if 'gender' in label or 'sex' in label:
+                # Use the improved extract_gender on the value
+                return extract_gender(value)
+    return None
 
 
 def extract_state(text: str) -> Optional[str]:
@@ -181,32 +234,15 @@ def contains_co_curricular_keyword(text: str) -> bool:
 def extract_name_from_columns(df: pd.DataFrame) -> Optional[str]:
     """
     Extract student name from DataFrame where name might be in column headers.
-
-    Args:
-        df: DataFrame loaded from Excel/CSV
-
-    Returns:
-        Student name or None
-
-    Example:
-        Column headers: ['Student Name', 'Ahmad Daniel Bin Hassan', 'Unnamed: 2']
-        Returns: 'Ahmad Daniel Bin Hassan'
     """
-    # Check column headers for name
     for col in df.columns:
         if pd.isna(col) or str(col).startswith('Unnamed'):
             continue
-
         col_str = str(col).strip()
-
-        # Skip the label column itself
         if re.search(r'^(Student\s+)?Name$', col_str, re.IGNORECASE):
             continue
-
-        # Check if this column looks like a name
         tokens = re.findall(r"[A-Z][a-zA-Z]+", col_str)
         if len(tokens) >= 2:
-            # Filter out common words
             name_tokens = [
                 t for t in tokens
                 if t not in METADATA_KEYWORDS_CS
@@ -215,27 +251,13 @@ def extract_name_from_columns(df: pd.DataFrame) -> Optional[str]:
             ]
             if len(name_tokens) >= 2:
                 return " ".join(name_tokens)
-
     return None
 
 
 def extract_name_from_row(row: pd.Series, label_col: str = None, value_col: str = None) -> Optional[str]:
     """
     Extract name from a DataFrame row where label and value are in separate columns.
-
-    Args:
-        row: A pandas Series representing one row
-        label_col: Name of the column containing labels (e.g., 'Label', 'Field')
-        value_col: Name of the column containing values (e.g., 'Value', 'Data')
-
-    Returns:
-        Student name or None
-
-    Example:
-        row = {'Label': 'Student Name', 'Value': 'Ahmad Daniel'}
-        Returns: 'Ahmad Daniel'
     """
-    # If specific columns are provided
     if label_col and value_col:
         if label_col in row and value_col in row:
             label = str(row[label_col]).strip()
@@ -243,37 +265,24 @@ def extract_name_from_row(row: pd.Series, label_col: str = None, value_col: str 
                 value = str(row[value_col]).strip()
                 if value and value != 'nan':
                     return value
-
-    # Otherwise, search through all columns
     for i, (label, value) in enumerate(zip(row.index, row.values)):
         label_str = str(label).strip()
         value_str = str(value).strip()
-
-        # Check if label indicates this is a name field
         if re.search(r'(Student\s+)?Name', label_str, re.IGNORECASE):
-            # Get the value from the next column if current is the label
             if i + 1 < len(row):
                 next_val = str(row.iloc[i + 1]).strip()
                 if next_val and next_val != 'nan':
                     return next_val
-            # Or return current value if it's not the label itself
             elif value_str and value_str != 'nan' and value_str.lower() != label_str.lower():
                 return value_str
-
     return None
 
 
 def parse_tabular_student_data(df: pd.DataFrame) -> Dict[str, Any]:
     """
-    Parse student data from tabular format (Excel/CSV) where data might be:
-    - In column headers (e.g., 'Student Name' | 'Ahmad Daniel' | ...)
-    - In rows with label-value pairs
-
-    Args:
-        df: DataFrame loaded from Excel/CSV
-
-    Returns:
-        Dictionary with extracted student information
+    Parse student data from tabular format (Excel/CSV).
+    Now includes robust gender extraction using the improved function
+    and explicit Label/Value structure detection.
     """
     result = {
         'name': None,
@@ -286,64 +295,102 @@ def parse_tabular_student_data(df: pd.DataFrame) -> Dict[str, Any]:
         'co_curricular': []
     }
 
-    # Try to extract name from column headers first
-    result['name'] = extract_name_from_columns(df)
+    # ----- 1. Try Label/Value structure first (most reliable) -----
+    label_col = None
+    value_col = None
+    for col in df.columns:
+        col_lower = str(col).strip().lower()
+        if col_lower == 'label':
+            label_col = col
+        elif col_lower == 'value':
+            value_col = col
 
-    # Iterate through rows to extract other data
-    for idx, row in df.iterrows():
-        # Convert row to string for easier searching
-        row_str = ' '.join([str(v) for v in row.values if pd.notna(v)])
+    if label_col is not None and value_col is not None:
+        # Extract all fields systematically
+        for _, row in df.iterrows():
+            label = str(row[label_col]).strip().lower() if pd.notna(row[label_col]) else ''
+            value = str(row[value_col]).strip() if pd.notna(row[value_col]) else ''
+            if not value or value.lower() in METADATA_KEYWORDS:
+                continue
 
-        # Extract metadata if name not found yet
-        if not result['name']:
-            # Try each column as potential label-value pair
-            for col_idx, (col_name, value) in enumerate(row.items()):
-                if pd.isna(value):
-                    continue
+            if 'student name' in label or 'name' == label:
+                result['name'] = value
+            elif 'gender' in label or 'sex' in label:
+                result['gender'] = extract_gender(value)  # uses improved function
+            elif 'nationality' in label:
+                result['nationality'] = value
+            elif 'school level' in label:
+                result['school_level'] = value
+            elif 'form' in label:
+                result['form'] = value
+            elif 'state' in label:
+                result['state'] = value
+            elif 'attendance' in label:
+                result['attendance'] = value  # optional extra field
+            elif is_valid_subject(label):
+                result['subjects'].append({'name': label, 'value': value})
+            elif contains_co_curricular_keyword(label):
+                result['co_curricular'].append({'name': label, 'value': value})
 
-                col_str = str(col_name).strip()
-                val_str = str(value).strip()
-
-                if re.search(r'(Student\s+)?Name', col_str, re.IGNORECASE):
-                    if val_str and not re.search(r'(Student\s+)?Name', val_str, re.IGNORECASE):
-                        result['name'] = val_str
-
-        # Extract gender
+        # If gender still missing, try the dedicated helper
         if not result['gender']:
-            gender = extract_gender(row_str)
-            if gender:
-                result['gender'] = gender
+            result['gender'] = extract_gender_from_label_value(df, label_col, value_col)
 
-        # Extract other metadata
-        if 'nationality' in row_str.lower() or 'Nationality' in row_str:
-            for val in row.values:
-                if pd.notna(val) and str(val).strip().lower() not in ['nationality', 'nan']:
-                    result['nationality'] = str(val).strip()
-                    break
+    # ----- 2. Fallback: row‑by‑row scanning (original method) -----
+    if not result['gender'] or not result['name']:
+        for idx, row in df.iterrows():
+            row_str = ' '.join([str(v) for v in row.values if pd.notna(v)])
 
-        if 'school level' in row_str.lower():
-            for val in row.values:
-                if pd.notna(val) and 'school' in str(val).lower():
-                    result['school_level'] = str(val).strip()
-                    break
+            if not result['name']:
+                # Try column‑based name extraction
+                name_candidate = extract_name_from_row(row)
+                if name_candidate:
+                    result['name'] = name_candidate
+                else:
+                    # Fallback to old extract_full_name
+                    name_candidate = extract_full_name(row_str)
+                    if name_candidate:
+                        result['name'] = name_candidate
 
-        if 'form' in row_str.lower() and 'form' not in result['form'] if result['form'] else True:
-            for val in row.values:
-                if pd.notna(val) and 'form' in str(val).lower():
-                    result['form'] = str(val).strip()
-                    break
+            if not result['gender']:
+                gender = extract_gender(row_str)
+                if gender:
+                    result['gender'] = gender
 
-        if not result['state']:
-            for val in row.values:
-                if pd.notna(val):
-                    val_str = str(val).strip()
-                    # Check for Malaysian states
-                    if val_str in ['Selangor', 'Johor', 'Penang', 'Perak', 'Kedah',
-                                   'Kelantan', 'Terengganu', 'Pahang', 'Negeri Sembilan',
-                                   'Melaka', 'Sabah', 'Sarawak', 'Perlis', 'Putrajaya',
-                                   'Kuala Lumpur', 'Labuan']:
-                        result['state'] = val_str
+            if not result['nationality'] and 'nationality' in row_str.lower():
+                for val in row.values:
+                    if pd.notna(val) and str(val).strip().lower() not in ['nationality', 'nan']:
+                        result['nationality'] = str(val).strip()
                         break
+
+            if not result['school_level'] and 'school level' in row_str.lower():
+                for val in row.values:
+                    if pd.notna(val) and 'school' in str(val).lower():
+                        result['school_level'] = str(val).strip()
+                        break
+
+            if not result['form'] and 'form' in row_str.lower() and not result['form']:
+                for val in row.values:
+                    if pd.notna(val) and 'form' in str(val).lower():
+                        result['form'] = str(val).strip()
+                        break
+
+            if not result['state']:
+                for val in row.values:
+                    if pd.notna(val):
+                        val_str = str(val).strip()
+                        malaysian_states = {'Selangor', 'Johor', 'Penang', 'Perak', 'Kedah',
+                                            'Kelantan', 'Terengganu', 'Pahang', 'Negeri Sembilan',
+                                            'Melaka', 'Sabah', 'Sarawak', 'Perlis', 'Putrajaya',
+                                            'Kuala Lumpur', 'Labuan'}
+                        if val_str in malaysian_states:
+                            result['state'] = val_str
+                            break
+
+    # Final cleanup: if gender still not found, try a global scan of all text
+    if not result['gender']:
+        all_text = ' '.join(df.astype(str).values.flatten())
+        result['gender'] = extract_gender(all_text)
 
     return result
 
@@ -352,16 +399,15 @@ def parse_tabular_student_data(df: pd.DataFrame) -> Dict[str, Any]:
 # Exports
 # -------------------------------------------------
 __all__ = [
-    # Original functions
     "extract_full_name",
     "looks_like_name",
     "extract_gender",
+    "extract_gender_from_label_value",
     "extract_state",
     "is_valid_subject",
     "contains_metadata_keyword",
     "contains_co_curricular_keyword",
     "KNOWN_SUBJECTS_CS",
-    # New functions for tabular data
     "extract_name_from_columns",
     "extract_name_from_row",
     "parse_tabular_student_data",
