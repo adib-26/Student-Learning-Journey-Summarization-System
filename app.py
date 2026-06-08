@@ -56,6 +56,16 @@ with col1_header:
 
     st.title(f"📊 {translated_title}")
     st.caption(translated_subtitle)
+    
+# Show Gemini quota warning if credits are exhausted
+if hasattr(secure_client, 'quota_exhausted') and secure_client.quota_exhausted:
+    if current_lang == 'ms':
+        quota_msg = ui_translator.get_string("gemini_quota_warning_ms", current_lang)
+    elif current_lang == 'zh':
+        quota_msg = ui_translator.get_string("gemini_quota_warning_zh", current_lang)
+    else:
+        quota_msg = ui_translator.get_string("gemini_quota_warning", current_lang)
+    st.warning(quota_msg, icon="⚠️")
 
 # =====================================================
 # FILE UPLOAD WITH DYNAMIC CSS INJECTION

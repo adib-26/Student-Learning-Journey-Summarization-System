@@ -328,6 +328,9 @@ UI_STRINGS = {
     'quota_warning': 'Translation quota running low!',
     'quota_exceeded': 'Monthly translation quota exceeded. Showing original content.',
     'updating_summary': '🔄 Updating summary for your selected axes...',
+    'gemini_quota_warning': '⚠️ Sorry, our AI summary service is temporarily unavailable',
+    'gemini_quota_warning_ms': '⚠️ Maaf, perkhidmatan ringkasan AI kami tidak tersedia buat sementara waktu',
+    'gemini_quota_warning_zh': '⚠️ 抱歉，我们的AI摘要服务暂时无法使用',
 }
 
 

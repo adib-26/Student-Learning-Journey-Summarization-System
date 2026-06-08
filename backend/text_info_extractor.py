@@ -221,7 +221,12 @@ Return ONLY the JSON object between the markers. Example:
         return {"certificates": [], "skills": [], "summary": ""}
 
     except Exception as e:
-        st.error("Gemini Data Extraction Error: " + str(e))
+        # Check if it's a 429 quota error to show friendly message
+        error_str = str(e)
+        if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "prepayment credits are depleted" in error_str:
+            st.warning("⚠️ Sorry, our AI summary service is temporarily unavailable", icon="⚠️")
+        else:
+            st.error("Gemini Data Extraction Error: " + str(e))
         return {"certificates": [], "skills": [], "summary": ""}
 
 

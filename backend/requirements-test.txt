@@ -1,0 +1,11 @@
+# Testing dependencies
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+
+# For mocking external services
+responses>=0.23.0
+
+# For linting (optional)
+flake8>=6.0.0
+black>=23.0.0

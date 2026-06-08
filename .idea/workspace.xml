@@ -4,12 +4,20 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="1c0867b6-9e1e-427d-b9bb-d87eb9f16500" name="Changes" comment="Chart Update">
-      <change afterPath="$PROJECT_DIR$/app_core.py" afterDir="false" />
+    <list default="true" id="1c0867b6-9e1e-427d-b9bb-d87eb9f16500" name="Changes" comment="Main Update">
+      <change afterPath="$PROJECT_DIR$/backend/pytest.ini" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/requirements-test.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/run_tests.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/tests/test_deepl_translator.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/tests/test_integration_quota_workflow.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/tests/test_secure_gemini_client.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/tests/test_system_full_workflow.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/backend/tests/test_text_info_extractor.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/chart.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/chart.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/visualizations.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/visualizations.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/deepl_translator.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/deepl_translator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/secure_gemini_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/secure_gemini_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/text_info_extractor.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/text_info_extractor.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -201,7 +209,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780846738583</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="Main Update">
+      <option name="closed" value="true" />
+      <created>1780928080812</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1780928080812</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -225,6 +241,7 @@
     <MESSAGE value=" Report Update" />
     <MESSAGE value=" Report Image Update" />
     <MESSAGE value="Chart Update" />
-    <option name="LAST_COMMIT_MESSAGE" value="Chart Update" />
+    <MESSAGE value="Main Update" />
+    <option name="LAST_COMMIT_MESSAGE" value="Main Update" />
   </component>
 </project>
