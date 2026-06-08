@@ -1,10 +1,9 @@
-import io
 import streamlit as st
 import plotly.express as px
 import pandas as pd
 from typing import Optional, List
 
-from backend.data_cleaning import get_valid_x_axis_columns
+from backend.data_cleaning import get_valid_x_axis_columns, get_auto_y_for_x_column
 from backend.text_visualizations import visualize_text
 
 # Import the dual-layered translation framework
@@ -19,32 +18,27 @@ def prepare_plot_df(df: pd.DataFrame, x_col: Optional[str], y_col: str) -> pd.Da
     if not x_col or not y_col or x_col not in df.columns or y_col not in df.columns:
         return pd.DataFrame()
 
-    # Create a copy to avoid modifying the original DataFrame
     plot_df = df.copy()
 
-    # Coerce Y to numeric and drop rows where Y is NaN
     plot_df[y_col] = pd.to_numeric(plot_df[y_col], errors="coerce")
-    
-    # Also coerce X to numeric if it's not an object type, to handle cases where X might be a score
+
     if plot_df[x_col].dtype != 'object':
         plot_df[x_col] = pd.to_numeric(plot_df[x_col], errors='coerce')
 
-    # Drop rows where EITHER x_col or y_col is NaN, creating a true data slice
     plot_df.dropna(subset=[x_col, y_col], inplace=True)
 
     return plot_df
 
+
 def prepare_chart_data(df: pd.DataFrame, x_col: Optional[str], y_col: str) -> pd.DataFrame:
     """Prepare grouped data specifically for chart plotting"""
     chart_df = df.copy()
-    
+
     if x_col and x_col in chart_df.columns:
-        # We need to use the original, non-numeric y_col data for grouping if it exists
         if chart_df[x_col].dtype == "object" or not chart_df[x_col].is_unique:
-            # Ensure y_col is numeric before aggregation
             chart_df[y_col] = pd.to_numeric(chart_df[y_col], errors="coerce")
             return chart_df.groupby(x_col, dropna=False)[y_col].mean().reset_index()
-    
+
     return chart_df
 
 
@@ -52,11 +46,6 @@ def prepare_chart_data(df: pd.DataFrame, x_col: Optional[str], y_col: str) -> pd
 # Visualization Section
 # -----------------------------
 def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List[bytes]:
-    """
-    Render visuals to Streamlit and return a list of PNG bytes for each chart rendered.
-    If no charts are produced, returns an empty list.
-    All chart controls, titles, legends, and dynamic data tags are fully localized.
-    """
     images: List[bytes] = []
 
     numeric_cols = cleaned_df.select_dtypes(include=["number"]).columns.tolist()
@@ -68,12 +57,23 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
         visualize_text(extracted_text)
         return images
 
-    # Identify the globally active runtime language code
     current_lang = st.session_state.get("selected_language", "en")
+
+    def translate_with_number_preservation(val):
+        val_str = str(val)
+        if ' ' in val_str and val_str.split()[-1].isdigit():
+            base_val = ' '.join(val_str.split()[:-1])
+            number = val_str.split()[-1]
+            base_translated = translator.translate_text(base_val, current_lang)
+            return f"{base_translated} {number}"
+        else:
+            return translator.translate_text(val_str, current_lang)
 
     st.subheader(ui_translator.get_string("🎛 Interactive Visualization", current_lang))
 
-    # --- 1. LOCALIZED WIDGET CONTROLS ---
+    # ─────────────────────────────────────────
+    # 1. CHART TYPE SELECTOR
+    # ─────────────────────────────────────────
     chart_choices = ["Bar", "Line", "Area", "Scatter", "Pie", "Spider"]
     translated_choices_map = {
         choice: ui_translator.get_string(choice, current_lang) for choice in chart_choices
@@ -82,120 +82,210 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
     selected_display_type = st.radio(
         ui_translator.get_string("Choose chart type:", current_lang),
         options=list(translated_choices_map.values()),
-        horizontal=True
+        horizontal=True,
+        key="chart_type_radio",
     )
 
-    # Reverse look-up to resolve English code control flags
     chart_type = [k for k, v in translated_choices_map.items() if v == selected_display_type][0]
 
-    # Handle dropdown lists with context translation rules
     none_label = f"({ui_translator.get_string('none', current_lang)})"
 
-    translated_x_cols_map = {col: translator.translate_text(col, current_lang) for col in valid_x_cols}
+    # ─────────────────────────────────────────
+    # 2. X-AXIS SELECTOR
+    # ─────────────────────────────────────────
+    translated_x_cols_map = {col: translate_with_number_preservation(col) for col in valid_x_cols}
     x_display_options = [none_label] + list(translated_x_cols_map.values())
 
-    selected_x_display = st.selectbox(ui_translator.get_string("X-axis", current_lang), x_display_options)
+    # FIX: Use position-based index lookup instead of translated-string matching.
+    # Translated-string matching is fragile — DeepL can return subtly different
+    # results (whitespace, casing) across calls, causing the lookup to fail and
+    # the selectbox to fall back to index 0 (the "(none)" option).
+    valid_x_list = list(valid_x_cols)
+    stored_x = st.session_state.get('current_x_axis')
+    if stored_x and stored_x in valid_x_list:
+        # +1 because none_label occupies index 0
+        default_x_idx = valid_x_list.index(stored_x) + 1
+    else:
+        default_x_idx = 0
 
+    selected_x_display = st.selectbox(
+        ui_translator.get_string("X-axis", current_lang),
+        x_display_options,
+        index=default_x_idx,
+        key="x_axis_selector",   # stable key prevents widget identity loss on rerun
+    )
+
+    # Reverse-map the display label back to the original column name
     if selected_x_display == none_label:
         x_axis = None
+        st.session_state.pop('current_x_axis', None)
     else:
-        x_axis = [k for k, v in translated_x_cols_map.items() if v == selected_x_display][0]
+        matching_cols = [k for k, v in translated_x_cols_map.items() if v == selected_x_display]
+        x_axis = matching_cols[0] if matching_cols else None
+        if x_axis:
+            st.session_state['current_x_axis'] = x_axis
 
-    translated_y_cols_map = {col: translator.translate_text(col, current_lang) for col in numeric_cols}
+    # ─────────────────────────────────────────
+    # 3. AUTO Y-AXIS USING 3-LETTER PREFIX RULE
+    # ─────────────────────────────────────────
+    auto_y_raw: Optional[str] = get_auto_y_for_x_column(cleaned_df, x_axis) if x_axis else None
+
+    translated_y_cols_map = {}
+    for col in numeric_cols:
+        translated = translate_with_number_preservation(col)
+        translated_y_cols_map[col] = translated
+
+    y_display_options = list(translated_y_cols_map.values())
+
+    # FIX: Position-based default for Y-axis as well — same reasoning as X-axis above.
+    valid_y_list = list(numeric_cols)
+    if auto_y_raw and auto_y_raw in valid_y_list:
+        default_y_idx = valid_y_list.index(auto_y_raw)
+    else:
+        default_y_idx = 0
+
     selected_y_display = st.selectbox(
         ui_translator.get_string("Y-axis (numeric)", current_lang),
-        list(translated_y_cols_map.values())
+        y_display_options,
+        index=default_y_idx,
+        key="y_axis_selector",   # stable key
     )
-    y_axis = [k for k, v in translated_y_cols_map.items() if v == selected_y_display][0]
 
-    # Auto-trigger summary update when ANY axis changes (X or Y, even if Y changes automatically)
+    matching_y_cols = [k for k, v in translated_y_cols_map.items() if v == selected_y_display]
+    if matching_y_cols:
+        y_axis = matching_y_cols[0]
+    else:
+        st.error(ui_translator.get_string("Could not find selected Y-axis column.", current_lang))
+        return images
+
+    # Show a subtle hint when auto-selection is active
+    if auto_y_raw and auto_y_raw == y_axis and x_axis:
+        st.caption(
+            ui_translator.get_string("⚡ Y-axis auto-selected based on column pairing", current_lang)
+        )
+
+    # ─────────────────────────────────────────
+    # 4. SUMMARY AUTO-UPDATE TRIGGER
+    # ─────────────────────────────────────────
     current_selection = f"{x_axis}_{y_axis}"
-    last_selection = st.session_state.get('last_axis_selection', None)
-    
-    if current_selection != last_selection and x_axis and y_axis:
+    if current_selection != st.session_state.get('last_axis_selection') and x_axis and y_axis:
         st.session_state['summary_needs_update'] = True
         st.session_state['last_axis_selection'] = current_selection
-    
-    # Prepare a data slice for statistics, which preserves all subject rows for context
+
+    # ─────────────────────────────────────────
+    # 5. PREPARE DATA FRAME SLICE
+    # ─────────────────────────────────────────
     stats_df = prepare_plot_df(cleaned_df, x_axis, y_axis)
-    # From the stats_df, prepare the grouped and aggregated data needed for plotting
     plot_df = prepare_chart_data(stats_df, x_axis, y_axis)
 
-    # --- 2. UPDATE STATISTICS AND REGENERATE SUMMARY FOR SELECTED AXES ---
     if x_axis and y_axis and not stats_df.empty:
-        # Recompute statistics for the filtered data (still preserves subject rows)
         from backend.analytics_statistics import compute_statistics
         updated_stats = compute_statistics(stats_df, x_axis, y_axis)
-        
-        # Pass updated stats to session state for summary regeneration
         st.session_state['current_plot_stats'] = updated_stats
         st.session_state['current_x_axis'] = x_axis
         st.session_state['current_y_axis'] = y_axis
-    
-    # --- 3. DEEP DATA LABELS LOCALIZATION PASS ---
+
     localized_plot_df = plot_df.copy()
+
     if localized_plot_df.empty:
-        # Don't attempt to plot an empty dataframe.
         st.info(ui_translator.get_string("Please select Y axes to generate a chart.", current_lang))
         return images
 
     if current_lang != "en":
-        if x_axis and x_axis in localized_plot_df.columns and localized_plot_df[x_axis].dtype == "object":
-            localized_plot_df[x_axis] = localized_plot_df[x_axis].apply(
-                lambda val: translator.translate_text(str(val), current_lang)
-            )
+        if (
+            x_axis
+            and x_axis in localized_plot_df.columns
+            and localized_plot_df[x_axis].dtype == "object"
+        ):
+            localized_plot_df[x_axis] = localized_plot_df[x_axis].apply(translate_with_number_preservation)
 
     fig = None
 
-    # Helper to try export Plotly fig to PNG bytes
-    def _fig_to_png_bytes(plotly_fig, width: int = 1200, height: int = 600, scale: int = 2) -> Optional[bytes]:
+    def _fig_to_png_bytes(
+        plotly_fig, width: int = 1200, height: int = 600, scale: int = 2
+    ) -> Optional[bytes]:
         try:
-            img_bytes = plotly_fig.to_image(format="png", width=width, height=height, scale=scale)
-            return img_bytes
+            return plotly_fig.to_image(format="png", width=width, height=height, scale=scale)
         except Exception:
             return None
 
-    # Resolve active textual labels for charts
-    x_label_text = translated_x_cols_map.get(x_axis, ui_translator.get_string("index", current_lang))
+    x_label_text = translated_x_cols_map.get(
+        x_axis, ui_translator.get_string("index", current_lang)
+    )
     y_label_text = translated_y_cols_map.get(y_axis, y_axis)
 
-    x_vals = None
-    if x_axis and x_axis in localized_plot_df.columns:
-        x_vals = localized_plot_df[x_axis]
-    else:
-        x_vals = localized_plot_df.index.astype(str)
+    x_vals = (
+        localized_plot_df[x_axis]
+        if (x_axis and x_axis in localized_plot_df.columns)
+        else localized_plot_df.index.astype(str)
+    )
 
-    # -----------------------------
-    # Standard charts
-    # -----------------------------
+    # ─────────────────────────────────────────
+    # 6. CHART RENDERING
+    # ─────────────────────────────────────────
+
     if chart_type == "Bar":
-        fig = px.bar(localized_plot_df, x=x_vals, y=y_axis, labels={"x": x_label_text, y_axis: y_label_text})
+        fig = px.bar(
+            localized_plot_df,
+            x=x_vals,
+            y=y_axis,
+            labels={"x": x_label_text, y_axis: y_label_text},
+        )
 
     elif chart_type == "Line":
-        fig = px.line(localized_plot_df, x=x_vals, y=y_axis, markers=True,
-                      labels={"x": x_label_text, y_axis: y_label_text})
+        fig = px.line(
+            localized_plot_df,
+            x=x_vals,
+            y=y_axis,
+            markers=True,
+            labels={"x": x_label_text, y_axis: y_label_text},
+        )
 
     elif chart_type == "Area":
-        fig = px.area(localized_plot_df, x=x_vals, y=y_axis, labels={"x": x_label_text, y_axis: y_label_text})
+        fig = px.area(
+            localized_plot_df,
+            x=x_vals,
+            y=y_axis,
+            labels={"x": x_label_text, y_axis: y_label_text},
+        )
 
     elif chart_type == "Scatter":
-        fig = px.scatter(localized_plot_df, x=x_vals, y=y_axis, labels={"x": x_label_text, y_axis: y_label_text})
+        fig = px.scatter(
+            localized_plot_df,
+            x=x_vals,
+            y=y_axis,
+            labels={"x": x_label_text, y_axis: y_label_text},
+        )
 
     elif chart_type == "Pie":
         if x_axis:
-            fig = px.pie(localized_plot_df, names=x_axis, values=y_axis,
-                         labels={x_axis: x_label_text, y_axis: y_label_text})
+            fig = px.pie(
+                localized_plot_df,
+                names=x_axis,
+                values=y_axis,
+                labels={x_axis: x_label_text, y_axis: y_label_text},
+            )
         else:
-            st.warning(ui_translator.get_string("Pie chart requires a categorical X-axis.", current_lang))
+            st.warning(
+                ui_translator.get_string("Pie chart requires a categorical X-axis.", current_lang)
+            )
 
-    # -----------------------------
+    # ─────────────────────────────────────────
     # Spider / Radar chart
-    # -----------------------------
+    # ─────────────────────────────────────────
     elif chart_type == "Spider":
-        st.subheader(ui_translator.get_string("🕸️ Spider Chart (Overall Student Performance)", current_lang))
+        st.subheader(
+            ui_translator.get_string(
+                "🕸️ Spider Chart (Overall Student Performance)", current_lang
+            )
+        )
 
         if "Label" not in cleaned_df.columns or "Score" not in cleaned_df.columns:
-            st.warning(ui_translator.get_string("Spider chart requires Label and Score columns.", current_lang))
+            st.warning(
+                ui_translator.get_string(
+                    "Spider chart requires Label and Score columns.", current_lang
+                )
+            )
             return images
 
         radar_df = cleaned_df[["Label", "Score"]].copy()
@@ -203,15 +293,18 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
         radar_df = radar_df.dropna(subset=["Score"])
 
         if radar_df.shape[0] < 3:
-            st.warning(ui_translator.get_string("Not enough numeric data to build a spider chart.", current_lang))
+            st.warning(
+                ui_translator.get_string(
+                    "Not enough numeric data to build a spider chart.", current_lang
+                )
+            )
             return images
 
-        # Translate rows within the radar dataframe's dynamic 'Label' fields
-        radar_df["Label"] = radar_df["Label"].apply(lambda label: translator.translate_text(str(label), current_lang))
-
-        # Translate the legendary key tracking name
+        radar_df["Label"] = radar_df["Label"].apply(translate_with_number_preservation)
         radar_df["Entity"] = ui_translator.get_string("Student Performance", current_lang)
-        radar_title = ui_translator.get_string("Holistic Student Performance Radar", current_lang)
+        radar_title = ui_translator.get_string(
+            "Holistic Student Performance Radar", current_lang
+        )
 
         fig = px.line_polar(
             radar_df,
@@ -220,33 +313,25 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
             color="Entity",
             line_close=True,
             title=radar_title,
-            color_discrete_sequence=[px.colors.qualitative.Plotly[0]]
+            color_discrete_sequence=[px.colors.qualitative.Plotly[0]],
         )
-
-        fig.update_traces(
-            fill="toself",
-            line=dict(width=3),
-            marker=dict(size=6)
-        )
-
+        fig.update_traces(fill="toself", line=dict(width=3), marker=dict(size=6))
         fig.update_layout(
             polar=dict(
                 radialaxis=dict(
                     visible=True,
                     showline=False,
-                    gridcolor="rgba(0,0,0,0.2)"
+                    gridcolor="rgba(0,0,0,0.2)",
                 ),
-                angularaxis=dict(
-                    showline=False,
-                    gridcolor="rgba(0,0,0,0.2)"
-                )
+                angularaxis=dict(showline=False, gridcolor="rgba(0,0,0,0.2)"),
             ),
-            showlegend=False
+            showlegend=False,
         )
 
-    # Render and attempt to capture PNG bytes
+    # ─────────────────────────────────────────
+    # 7. RENDER + CAPTURE PNG
+    # ─────────────────────────────────────────
     if fig:
-        # Standardize chart background look and font scaling configurations for modern look
         fig.update_layout(font=dict(size=13))
         try:
             st.plotly_chart(fig, use_container_width=True)

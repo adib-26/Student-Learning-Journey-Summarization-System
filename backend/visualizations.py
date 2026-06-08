@@ -67,6 +67,17 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
     # Identify the globally active runtime language code
     current_lang = st.session_state.get("selected_language", "en")
 
+    # Helper function to translate values while preserving numeric suffixes (Label 1, Student 2, etc.)
+    def translate_with_number_preservation(val):
+        val_str = str(val)
+        if ' ' in val_str and val_str.split()[-1].isdigit():
+            base_val = ' '.join(val_str.split()[:-1])
+            number = val_str.split()[-1]
+            base_translated = translator.translate_text(base_val, current_lang)
+            return f"{base_translated} {number}"
+        else:
+            return translator.translate_text(val_str, current_lang)
+
     st.subheader(ui_translator.get_string("🎛 Interactive Visualization", current_lang))
 
     # ─────────────────────────────────────────
@@ -91,29 +102,57 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
     # ─────────────────────────────────────────
     # 2. X-AXIS SELECTOR
     # ─────────────────────────────────────────
-    translated_x_cols_map = {
-        col: translator.translate_text(col, current_lang) for col in valid_x_cols
-    }
+    # Use the helper function to ensure consistent translation for all x-axis columns
+    translated_x_cols_map = {col: translate_with_number_preservation(col) for col in valid_x_cols}
+    
     x_display_options = [none_label] + list(translated_x_cols_map.values())
 
-    selected_x_display = st.selectbox(
-        ui_translator.get_string("X-axis", current_lang),
-        x_display_options,
-    )
+    # Maintain x-axis selection in session state to preserve it across language changes
+    default_x_display = None
+    if 'current_x_axis' in st.session_state and st.session_state['current_x_axis'] in translated_x_cols_map:
+        default_x_display = translated_x_cols_map[st.session_state['current_x_axis']]
+    
+    # If we have a default from session state, find its index to pre-select it
+    if default_x_display and default_x_display in x_display_options:
+        default_x_idx = x_display_options.index(default_x_display)
+        selected_x_display = st.selectbox(
+            ui_translator.get_string("X-axis", current_lang),
+            x_display_options,
+            index=default_x_idx,
+        )
+    else:
+        selected_x_display = st.selectbox(
+            ui_translator.get_string("X-axis", current_lang),
+            x_display_options,
+        )
+    
+    # Update session state with the newly selected x-axis
+    if selected_x_display != none_label:
+        matching_cols = [k for k, v in translated_x_cols_map.items() if v == selected_x_display]
+        if matching_cols:
+            st.session_state['current_x_axis'] = matching_cols[0]
 
     if selected_x_display == none_label:
         x_axis = None
     else:
-        x_axis = [k for k, v in translated_x_cols_map.items() if v == selected_x_display][0]
+        # Find the first matching column to avoid index errors with duplicate translations
+        matching_cols = [k for k, v in translated_x_cols_map.items() if v == selected_x_display]
+        if matching_cols:
+            x_axis = matching_cols[0]
+        else:
+            x_axis = None
 
     # ─────────────────────────────────────────
     # 3. AUTO Y-AXIS USING 3-LETTER PREFIX RULE
     # ─────────────────────────────────────────
     auto_y_raw: Optional[str] = get_auto_y_for_x_column(cleaned_df, x_axis) if x_axis else None
 
-    translated_y_cols_map = {
-        col: translator.translate_text(col, current_lang) for col in numeric_cols
-    }
+    # Add number suffix to translations for numeric columns too to ensure uniqueness
+    translated_y_cols_map = {}
+    for col in numeric_cols:
+        translated = translate_with_number_preservation(col)
+        translated_y_cols_map[col] = translated
+        
     y_display_options = list(translated_y_cols_map.values())
 
     # Compute the index to pre-select in the Y-axis selectbox
@@ -128,7 +167,13 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
         y_display_options,
         index=default_y_idx,
     )
-    y_axis = [k for k, v in translated_y_cols_map.items() if v == selected_y_display][0]
+    # Find the first matching column to avoid index errors with duplicate translations
+    matching_y_cols = [k for k, v in translated_y_cols_map.items() if v == selected_y_display]
+    if matching_y_cols:
+        y_axis = matching_y_cols[0]
+    else:
+        st.error(ui_translator.get_string("Could not find selected Y-axis column.", current_lang))
+        return images
 
     # Show a subtle hint when auto-selection is active
     if auto_y_raw and auto_y_raw == y_axis and x_axis:
@@ -144,6 +189,8 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
     # From the stats_df, prepare the grouped and aggregated data needed for plotting
     plot_df = prepare_chart_data(stats_df, x_axis, y_axis)
 
+
+    
     # Deep data-label localization pass
     localized_plot_df = plot_df.copy()
     if current_lang != "en":
@@ -152,9 +199,7 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
             and x_axis in localized_plot_df.columns
             and localized_plot_df[x_axis].dtype == "object"
         ):
-            localized_plot_df[x_axis] = localized_plot_df[x_axis].apply(
-                lambda val: translator.translate_text(str(val), current_lang)
-            )
+            localized_plot_df[x_axis] = localized_plot_df[x_axis].apply(translate_with_number_preservation)
 
     fig = None
 
@@ -259,9 +304,7 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
             )
             return images
 
-        radar_df["Label"] = radar_df["Label"].apply(
-            lambda label: translator.translate_text(str(label), current_lang)
-        )
+        radar_df["Label"] = radar_df["Label"].apply(translate_with_number_preservation)
         radar_df["Entity"] = ui_translator.get_string("Student Performance", current_lang)
         radar_title = ui_translator.get_string(
             "Holistic Student Performance Radar", current_lang
