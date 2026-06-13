@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 import streamlit as st
 import google.generativeai as genai
 from google.api_core.exceptions import GoogleAPIError, ResourceExhausted
@@ -20,7 +21,7 @@ class SecureGeminiClient:
         # By default, Google's SDK enforces strict TLS/SSL verification.
         genai.configure(api_key=self.api_key)
 
-    def call_gemini_secure(self, prompt: str, model: str = "gemini-2.5-flash") -> str:
+    def call_gemini_secure(self, prompt: str, model: str = "gemini-2.5-flash") -> Optional[str]:
         """Make encrypted API call to Gemini with robust error handling"""
         try:
             # If quota is already exhausted, fail fast to avoid repeated API calls

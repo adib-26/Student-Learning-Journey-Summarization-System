@@ -15,6 +15,8 @@ try:
 
     TESSERACT_AVAILABLE = True
 except ImportError:
+    pytesseract = None
+    Image = None
     TESSERACT_AVAILABLE = False
 
 
@@ -156,7 +158,7 @@ def _fix_pdf_extraction_issues(text: str) -> str:
 
 # Caching ensures components remember content arrays across layout reruns
 @st.cache_data(show_spinner=False)
-def load_file(file_name: str, file_size: int, file_bytes: bytes) -> Tuple[Union[pd.DataFrame, None], Union[dict, str, None]]:
+def load_file(file_name: str, file_bytes: bytes) -> Tuple[Union[pd.DataFrame, None], Union[dict, str, None]]:
     """
     Cached file loader tracking changes dynamically via filename, size, and binary contents.
     Prevents unneeded file uploads or reprocessing when a user changes UI languages.
@@ -216,6 +218,7 @@ def load_file(file_name: str, file_size: int, file_bytes: bytes) -> Tuple[Union[
                     return None, "PDF contains no extractable text (might be scanned images)"
 
             except ImportError:
+                pypdf = None
                 return None, "PyPDF not installed. Install with: pip install PyPDF"
             except Exception as e:
                 return None, f"Error extracting PDF text: {e}"

@@ -25,8 +25,6 @@ except Exception:
         from behaviour_extractor import extract_behaviour_pairs
     except Exception:
         def extract_behaviour_pairs(
-                text: Optional[str] = None,
-                df: Optional[object] = None,
         ) -> Dict[str, str]:
             return {}
 
@@ -214,7 +212,7 @@ def build_detailed_educational_insight(
 
     behaviour_traits = local_stats.get("behaviour") or {}
     if not behaviour_traits and extracted_text:
-        behaviour_traits = extract_behaviour_pairs(text=extracted_text)
+        behaviour_traits = extract_behaviour_pairs()
 
     strongest = local_stats.get("strength")
     weakest = local_stats.get("weakness")
@@ -233,9 +231,8 @@ def build_detailed_educational_insight(
     pronoun_possessive = "her" if gender == "Female" else "his"
     pronoun_subject = "She" if gender == "Female" else "He"
 
-    parts = []
-    parts.append(
-        f"{student_name}, {student_details_sentence or 'the student'}, demonstrates consistent academic engagement.")
+    parts = [
+        f"{student_name}, {student_details_sentence or 'the student'}, demonstrates consistent academic engagement."]
 
     if subjects:
         strongest_t = translate_subject_name(strongest) if strongest else None
@@ -377,7 +374,6 @@ def generate_summary(
     """
     Public API for generating student insight summaries with translation hooks.
     """
-    summary_text = None
 
     if mode == "insight":
         draft = build_detailed_educational_insight(stats, extracted_text)

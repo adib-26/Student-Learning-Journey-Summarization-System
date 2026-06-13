@@ -1,9 +1,15 @@
 import re
+import json
 import pandas as pd
 import streamlit as st
 
 # Import your active global translation engine safely
 from backend.deepl_translator import translator
+# Import secure Gemini client for AI-powered fallback
+from .secure_gemini_client import SecureGeminiClient
+
+# Initialize secure Gemini client for fallback extraction
+secure_client = SecureGeminiClient()
 
 # -------------------------------------------------
 # EXTENDED 2-WORD HIGH SCHOOL SUBJECTS (SAFE LIST)
@@ -61,6 +67,7 @@ def extract_numeric_pairs_from_data(df: pd.DataFrame) -> pd.DataFrame:
 
                     if not is_two_word:
                         # Get the main subject word
+                        label_clean = label_val.title()  # Default fallback
                         words = label_val.split()
                         if words:
                             skip_words = ['and', 'the', 'for', 'with', 'in', 'on', 'at', 'to', 'of']
@@ -138,6 +145,86 @@ def extract_numeric_pairs_from_data(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # -------------------------------------------------
+# GEMINI-POWERED FALLBACK EXTRACTION
+# -------------------------------------------------
+def _extract_top5_with_gemini(text_content: str) -> pd.DataFrame:
+    """
+    AI-powered fallback to extract top 5 subjects/scores when rule-based extraction fails.
+    Uses gemini-3.5-flash to intelligently parse unstructured data.
+    """
+    try:
+        prompt = f"""
+You will analyze the following student performance data and extract the top 5 academic subjects
+with their numeric scores (0-100). Return ONLY a JSON object wrapped between ###JSON_START### and ###JSON_END###.
+
+The JSON must have a single key "top_subjects" which is an array of objects. Each object must have:
+- "Label": string - the full subject name (preserve multi-word subjects like "Bahasa Malaysia")
+- "Score": integer - the numeric score (must be between 0-100)
+
+Rules:
+1. Extract ONLY academic subjects with clear numeric scores
+2. Sort them by Score in descending order (highest first)
+3. Return maximum 5 subjects
+4. If you can't find any academic subjects with scores, return an empty array
+5. Do NOT invent scores - only use numbers explicitly present in the text
+6. Preserve original subject names exactly as they appear
+
+DOCUMENT TEXT:
+{text_content}
+
+Example of correct JSON format:
+###JSON_START###
+{{
+  "top_subjects": [
+    {{"Label": "Bahasa Malaysia", "Score": 92}},
+    {{"Label": "Mathematics", "Score": 88}},
+    {{"Label": "Science", "Score": 85}}
+  ]
+}}
+###JSON_END###
+"""
+
+        # Use your existing secure Gemini client to maintain quota protection
+        response = secure_client.call_gemini_secure(prompt=prompt, model="gemini-3.5-flash")
+        
+        if not response:
+            return pd.DataFrame()
+
+        # Parse JSON response with the same marker pattern used elsewhere in your codebase
+        start_marker = "###JSON_START###"
+        end_marker = "###JSON_END###"
+        start_idx = response.find(start_marker)
+        end_idx = response.find(end_marker, start_idx + len(start_marker)) if start_idx != -1 else -1
+
+        if start_idx != -1 and end_idx != -1:
+            json_text = response[start_idx + len(start_marker):end_idx].strip()
+            try:
+                parsed = json.loads(json_text)
+                subjects = parsed.get("top_subjects", [])
+                if subjects:
+                    return pd.DataFrame(subjects)
+            except Exception as e:
+                print(f"Gemini JSON parsing error: {e}")
+
+        # Fallback: try to extract JSON directly if markers are missing
+        json_match = re.search(r'\{(?:[^{}]|(?R))*\}', response, re.DOTALL)
+        if json_match:
+            try:
+                parsed = json.loads(json_match.group(0))
+                subjects = parsed.get("top_subjects", [])
+                if subjects:
+                    return pd.DataFrame(subjects)
+            except Exception:
+                pass
+
+        return pd.DataFrame()
+
+    except Exception as e:
+        print(f"Gemini extraction failed: {e}")
+        return pd.DataFrame()
+
+
+# -------------------------------------------------
 # 2. MAIN TOP 5 EXTRACTOR
 # -------------------------------------------------
 def get_top5_numerical_rows(df: pd.DataFrame) -> pd.DataFrame:
@@ -159,6 +246,14 @@ def get_top5_numerical_rows(df: pd.DataFrame) -> pd.DataFrame:
 
     # Extract numeric pairs
     extracted_df = extract_numeric_pairs_from_data(df)
+
+    # If rule-based extraction fails, try Gemini-powered extraction
+    if extracted_df.empty:
+        # Convert entire dataframe to text for Gemini to process
+        df_text = df.to_string()
+        gemini_extracted = _extract_top5_with_gemini(df_text)
+        if not gemini_extracted.empty:
+            extracted_df = gemini_extracted
 
     if extracted_df.empty:
         return pd.DataFrame()

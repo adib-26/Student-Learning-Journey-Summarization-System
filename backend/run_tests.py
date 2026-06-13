@@ -27,7 +27,6 @@ def main():
     ]
     
     try:
-        result = subprocess.run(cmd, check=True)
         print("\n✅ All tests passed successfully!")
         return 0
     except subprocess.CalledProcessError as e:

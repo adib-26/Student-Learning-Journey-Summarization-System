@@ -34,7 +34,7 @@ def _parse_certificate_date_string(token: str) -> Optional[pd.Timestamp]:
     token = token.strip()
     # Normalize common separators and remove stray characters
     token_norm = re.sub(r"[,\u2011\u2012\u2013\u2014]", " ", token)  # remove dashes and commas
-    token_norm = re.sub(r"[\/\-\.]", "/", token_norm)
+    token_norm = re.sub(r"[/\-\.]", "/", token_norm)
     token_norm = re.sub(r"\s+", " ", token_norm).strip()
 
     # --- Explicit short numeric format handling (e.g., 6/2/6, 06/02/06, 6-2-06) ---

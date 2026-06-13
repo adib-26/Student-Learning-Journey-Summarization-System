@@ -70,7 +70,7 @@ def process_uploaded_file(active_file_object, file_name, file_bytes, audit_logge
                 extracted_text = extract_text_from_image(active_file_object)
                 df = parse_ocr_text_to_dataframe(extracted_text)
             else:
-                df, metadata = load_file(file_name, len(file_bytes), file_bytes)
+                df, metadata = load_file(file_name, file_bytes)
                 if isinstance(metadata, str):
                     extracted_text = metadata
 
@@ -206,12 +206,9 @@ def handle_unstructured_files(extracted_text, metadata, active_file_object, file
                     pdf_bytes = get_report_bytes(
                         stats=stats_unstructured,
                         df=pd.DataFrame(),
-                        student_info={},
                         student_name=student_name_unstructured,
-                        extracted_text=text_source,
                         behaviour_traits=[],
                         charts_images=[],
-                        page_html="",
                         page_images=[],
                         summary=translated_summary_text,
                     )
@@ -529,12 +526,9 @@ def generate_and_download_report(stats, df, student_info, student_name, extracte
     pdf_bytes = get_report_bytes(
         stats=stats,
         df=cleaned_df,
-        student_info=stats.get("student_details", {}),
         student_name=student_name,
-        extracted_text=extracted_text or "",
         behaviour_traits=behaviour_traits,
         charts_images=charts_images,
-        page_html=page_html,
         page_images=[],
         summary=translated_summary,
     )

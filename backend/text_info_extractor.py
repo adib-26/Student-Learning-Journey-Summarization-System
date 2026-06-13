@@ -178,14 +178,10 @@ Return ONLY the JSON object between the markers. Example:
             contents=prompt
         )
 
-        resp_text = ""
         if hasattr(response, "text"):
             resp_text = response.text or ""
         else:
-            try:
-                resp_text = response.output[0].content[0].text or ""
-            except Exception:
-                resp_text = str(response)
+            resp_text = str(response)
 
         start_marker = "###JSON_START###"
         end_marker = "###JSON_END###"
@@ -206,7 +202,7 @@ Return ONLY the JSON object between the markers. Example:
                 except Exception:
                     pass
 
-        json_match = re.search(r'\{(?:[^{}]|(?R))*\}', resp_text, re.DOTALL)
+        json_match = re.search(r'\{(?:[^{}]|(?R))*}', resp_text, re.DOTALL)
         if json_match:
             try:
                 parsed = json.loads(json_match.group(0))

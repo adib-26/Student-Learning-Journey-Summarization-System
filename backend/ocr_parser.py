@@ -1,6 +1,7 @@
 # backend/ocr_parser.py
 import re
 import pandas as pd
+from typing import Optional
 
 try:
     from .data_processing import (
@@ -36,11 +37,11 @@ except ImportError:
     }
 
 
-    def contains_metadata_keyword(text):
+    def contains_metadata_keyword():
         return False
 
 
-def extract_student_name_from_ocr(text: str) -> str:
+def extract_student_name_from_ocr(text: str) -> Optional[str]:
     """
     Extract student name from OCR text after "Name" keyword.
     Stops at metadata keywords, subject names, or English common words.
@@ -85,7 +86,6 @@ def parse_line_with_metadata_and_score(line: str):
     Returns: (metadata_dict, subject, score, maximum)
     """
     metadata = {}
-    original_line = line
 
     # Extract Student Name
     if 'Name' in line:
@@ -208,7 +208,6 @@ def parse_ocr_text_to_dataframe(text: str) -> pd.DataFrame:
     Also extracts subjects, scores, behaviour, and co-curricular activities.
     """
     rows = []
-    current_section = None
 
     # Extract student name first
     student_name = extract_student_name_from_ocr(text)
@@ -234,7 +233,6 @@ def parse_ocr_text_to_dataframe(text: str) -> pd.DataFrame:
         # Detect section headers
         for name, pattern in section_headers.items():
             if pattern.search(line):
-                current_section = name.replace("_", " ").title()
                 break
 
         # Handle lines with "|" separator (parallel columns)

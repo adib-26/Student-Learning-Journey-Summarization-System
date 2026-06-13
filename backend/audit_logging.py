@@ -1,6 +1,6 @@
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import uuid
 
@@ -12,7 +12,7 @@ class AuditLogger:
         self.log_file = log_file
 
         # 1. Use an explicitly passed session ID (like Streamlit's native tracking key)
-        # or fall back to a crytographically random UUIDv4 string.
+        # or fall back to a cryptographically random UUIDv4 string.
         self.session_id = custom_session_id or f"SESS_{uuid.uuid4().hex[:12].upper()}"
 
         # Create logs directory safely
@@ -31,7 +31,7 @@ class AuditLogger:
     def _write_audit(self, entry: dict):
         """Helper to enforce structured formatting across all entry payloads"""
         entry["session_id"] = self.session_id
-        entry["timestamp"] = datetime.utcnow().isoformat() + "Z"  # Standardized ISO UTC timezone marker
+        entry["timestamp"] = datetime.now(timezone.utc).isoformat()  # Timezone-aware UTC timestamp
 
         if entry.get("status") == "FAILURE":
             self.logger.error(json.dumps(entry))

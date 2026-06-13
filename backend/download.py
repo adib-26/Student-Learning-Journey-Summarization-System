@@ -4,7 +4,7 @@ import os
 import textwrap
 import pandas as pd
 import streamlit as st
-from typing import List, Optional, Sequence, Any
+from typing import Optional, Sequence, Any
 from datetime import datetime
 from PIL import Image as PILImage
 from reportlab.pdfbase import pdfmetrics
@@ -229,12 +229,9 @@ def get_report_bytes(
         *,
         stats: dict,
         df: pd.DataFrame,
-        student_info: dict,
         student_name: str,
-        extracted_text: str = "",
         behaviour_traits: Optional[Sequence[dict]] = None,
         charts_images: Optional[Sequence[bytes]] = None,
-        page_html: Optional[str] = None,
         page_images: Optional[Sequence[bytes]] = None,
         summary: Optional[str] = None,
 ) -> bytes:

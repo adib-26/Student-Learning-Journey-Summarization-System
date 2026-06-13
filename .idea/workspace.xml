@@ -4,20 +4,25 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="1c0867b6-9e1e-427d-b9bb-d87eb9f16500" name="Changes" comment="Main Update">
-      <change afterPath="$PROJECT_DIR$/backend/pytest.ini" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/requirements-test.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/run_tests.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/tests/test_deepl_translator.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/tests/test_integration_quota_workflow.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/tests/test_secure_gemini_client.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/tests/test_system_full_workflow.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/backend/tests/test_text_info_extractor.py" afterDir="false" />
+    <list default="true" id="1c0867b6-9e1e-427d-b9bb-d87eb9f16500" name="Changes" comment="Test Case">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app.py" beforeDir="false" afterPath="$PROJECT_DIR$/app.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app_core.py" beforeDir="false" afterPath="$PROJECT_DIR$/app_core.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/audit_logging.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/audit_logging.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/behaviour_extractor.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/behaviour_extractor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/data_loader.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data_loader.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/data_processing.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/data_processing.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/deepl_translator.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/deepl_translator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/download.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/download.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/ocr_parser.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/ocr_parser.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/run_tests.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/run_tests.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/secure_gemini_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/secure_gemini_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/student_info_extractor.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/student_info_extractor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/summarizer.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/summarizer.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/text_info_extractor.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/text_info_extractor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/text_name.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/text_name.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/text_visualizations.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/text_visualizations.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/top5.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/top5.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -217,7 +222,15 @@
       <option name="project" value="LOCAL" />
       <updated>1780928080812</updated>
     </task>
-    <option name="localTasksCounter" value="14" />
+    <task id="LOCAL-00014" summary="Test Case">
+      <option name="closed" value="true" />
+      <created>1780932717067</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1780932717067</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -242,6 +255,7 @@
     <MESSAGE value=" Report Image Update" />
     <MESSAGE value="Chart Update" />
     <MESSAGE value="Main Update" />
-    <option name="LAST_COMMIT_MESSAGE" value="Main Update" />
+    <MESSAGE value="Test Case" />
+    <option name="LAST_COMMIT_MESSAGE" value="Test Case" />
   </component>
 </project>

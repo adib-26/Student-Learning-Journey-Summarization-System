@@ -14,7 +14,7 @@ except Exception:
 # --- RULE-BASED EXTRACTION LOGIC ---
 
 def _collapse_spaced_letters(text: str) -> str:
-    return re.sub(r'(?:\b(?:[A-Za-z]\s){2,}[A-Za-z]\b)', lambda m: m.group(0).replace(" ", ""), text)
+    return re.sub(r'\b(?:[A-Za-z]\s){2,}[A-Za-z]\b', lambda m: m.group(0).replace(" ", ""), text)
 
 
 def _normalize_text(text: str) -> str:
@@ -118,7 +118,7 @@ def _validate_name_with_gemini(extracted_name: str, full_text: str) -> str:
             contents=prompt,
         )
         return response.text.strip()
-    except Exception as e:
+    except Exception:
         # If Gemini fails, return the original extracted name as fallback
         return extracted_name
 
@@ -127,7 +127,6 @@ def _validate_name_with_gemini(extracted_name: str, full_text: str) -> str:
 
 def extract_student_name(file_path_or_text: str) -> str:
     try:
-        text = ""
         if isinstance(file_path_or_text, str) and os.path.exists(file_path_or_text):
             if DocumentConverter is None:
                 return "Unknown Student"

@@ -6,8 +6,6 @@ Fixed gender extraction from Excel files with proper column detection.
 
 import pandas as pd
 import re
-import json
-import time
 import logging
 from typing import Dict, Optional
 import streamlit as st
@@ -28,7 +26,7 @@ def sanitize_and_set_student_name(student_info: Dict[str, str], name: str):
     if not name:
         return
     cleaned_name = str(name).strip()
-    cleaned_name = re.sub(r"^[`\"'\[\{]+|[\]\}\"'`]+$", "", cleaned_name).strip()
+    cleaned_name = re.sub(r"^[`\"'\[{]+|[\]}'\"`]+$", "", cleaned_name).strip()
     cleaned_name = re.split(r"\s{2,}|\bNaN\b", cleaned_name)[0].strip()
     if cleaned_name and cleaned_name.lower() not in FORBIDDEN_LABELS_LOWER:
         student_info["Student Name"] = cleaned_name

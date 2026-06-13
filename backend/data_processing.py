@@ -1,13 +1,14 @@
 # backend/data_processing.py
 import re
 import pandas as pd
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, TypedDict, List
 
 try:
     import enchant
     ENCHANT_AVAILABLE = True
     EN_DICT = enchant.Dict("en_US")
 except ImportError:
+    enchant = None
     ENCHANT_AVAILABLE = False
     EN_DICT = None
 
@@ -49,6 +50,18 @@ CO_CURRICULAR_KEYWORDS = {
     "position", "role", "committee", "group", "association"
 }
 CO_CURRICULAR_KEYWORDS_CS = {w.title() for w in CO_CURRICULAR_KEYWORDS}
+
+
+class StudentData(TypedDict):
+    name: Optional[str]
+    gender: Optional[str]
+    nationality: Optional[str]
+    school_level: Optional[str]
+    form: Optional[str]
+    state: Optional[str]
+    attendance: Optional[str]
+    subjects: List[Dict[str, str]]
+    co_curricular: List[Dict[str, str]]
 
 
 # -------------------------------------------------
@@ -259,7 +272,7 @@ def extract_name_from_row(row: pd.Series, label_col: str = None, value_col: str 
     Extract name from a DataFrame row where label and value are in separate columns.
     """
     if label_col and value_col:
-        if label_col in row and value_col in row:
+        if label_col in row.index and value_col in row.index:
             label = str(row[label_col]).strip()
             if re.search(r'(Student\s+)?Name', label, re.IGNORECASE):
                 value = str(row[value_col]).strip()
@@ -278,19 +291,20 @@ def extract_name_from_row(row: pd.Series, label_col: str = None, value_col: str 
     return None
 
 
-def parse_tabular_student_data(df: pd.DataFrame) -> Dict[str, Any]:
+def parse_tabular_student_data(df: pd.DataFrame) -> StudentData:
     """
     Parse student data from tabular format (Excel/CSV).
     Now includes robust gender extraction using the improved function
     and explicit Label/Value structure detection.
     """
-    result = {
+    result: StudentData = {
         'name': None,
         'gender': None,
         'nationality': None,
         'school_level': None,
         'form': None,
         'state': None,
+        'attendance': None,
         'subjects': [],
         'co_curricular': []
     }

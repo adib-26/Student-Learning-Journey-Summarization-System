@@ -75,17 +75,17 @@ _RATING_ALTERNATION = r"|".join(re.escape(tok) for tok in _rating_tokens)
 _STRICT_PATTERN = re.compile(
     rf"""
     (?P<attr>
-        (?:[A-Za-z][A-Za-z'&\-/]{{0,20}})
+        [A-Za-z][A-Za-z'&\-/]{{0,20}}
         (?:\s+[A-Za-z][A-Za-z'&\-/]{{0,20}}){{0,4}}
     )
-    \s*(?:[:\-\–\—]\s*|\s+)
-    (?P<rating>\b(?:{_RATING_ALTERNATION})\b)
+    \s*(?:[:\-–—]\s*|\s+)
+    (?P<rating>\b{_RATING_ALTERNATION}\b)
     """,
     flags=re.IGNORECASE | re.VERBOSE,
 )
 
 # Token regexes for fallback
-_RATING_TOKEN_RE = re.compile(rf"\b(?:{_RATING_ALTERNATION})\b", flags=re.IGNORECASE)
+_RATING_TOKEN_RE = re.compile(rf"\b{_RATING_ALTERNATION}\b", flags=re.IGNORECASE)
 _WORD_RE = re.compile(r"[A-Za-z'&\-/]{1,30}", flags=re.IGNORECASE)
 
 
@@ -113,7 +113,7 @@ def _fallback_extract_pairs(text: str) -> Dict[str, str]:
         i = idx
         while i >= 0 and len(attr_tokens) < 5:
             token = words[i][0]
-            if re.search(r"\d|\/", token):
+            if re.search(r"\d|/", token):
                 i -= 1
                 continue
             if len(token) == 1 and not re.match(r"[A-Za-z]", token):

@@ -2,7 +2,6 @@
 DeepL translation module featuring resilient caching, quota telemetry, 
 and automatic string fallbacks.
 """
-import io
 import os
 import json
 import pickle
@@ -245,7 +244,7 @@ class DeepLTranslator:
         if not texts or target_language == 'en':
             return texts
 
-        results = [None] * len(texts)
+        results: List[Optional[str]] = [None] * len(texts)
         uncached_payloads = []
         uncached_indices = []
 
