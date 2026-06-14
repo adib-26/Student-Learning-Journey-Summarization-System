@@ -3,9 +3,10 @@ import os
 import tempfile
 import json
 import re
-from google import genai
 from docling.document_converter import DocumentConverter
 from backend.text_name import extract_student_name
+from backend.secure_gemini_client import SecureGeminiClient
+from backend.pii_protection import PIIProtector
 
 
 def get_text_info(uploaded_file):
@@ -128,10 +129,16 @@ def _extract_certificate_data_with_gemini(text_content: str) -> dict:
       - Instruct model not to use strong adjectives like "expert" unless numeric or credential evidence exists.
       - Ask model to wrap JSON between explicit markers to ease parsing.
       - Request skills without scores if no numeric evidence.
+      - Uses SecureGeminiClient and PIIProtector for secure API calls.
     """
     try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-        client = genai.Client(api_key=api_key)
+        # Initialize secure clients
+        secure_client = SecureGeminiClient()
+        pii_protector = PIIProtector()
+        
+        # Redact PII before sending to Gemini, but preserve certificate and document structure
+        # This still allows Gemini to extract all certificate details while protecting PII
+        safe_text_content = pii_protector.redact_pii(text_content)
 
         prompt = f"""
 You will analyze the DOCUMENT TEXT below and return a single JSON object between the markers
@@ -156,9 +163,11 @@ Rules:
    - You may draw simple, logical connections between the facts presented (e.g., link a certificate in programming to a skill in software development) but NEVER invent new information that is not explicitly in the document.
    - If certificates do not show numeric achievement, prefer phrasing like "This certificate widened knowledge in X" or "This course helped build skills in X."
    - Keep it factual and modest. Do not add suggestions or future steps.
+   - IMPORTANT: Do NOT include any dates (like March 2026, April 2026, etc.) in the summary. Focus on the achievements themselves without temporal references.
+   - CRITICAL: Extract ALL certificate details exactly as they appear. Do NOT omit any certificate information from the document (including dates in the certificate data).
 
 DOCUMENT TEXT:
-{text_content}
+{safe_text_content}
 
 Return ONLY the JSON object between the markers. Example:
 
@@ -175,15 +184,14 @@ Return ONLY the JSON object between the markers. Example:
 ###JSON_END###
 """
 
-        response = client.models.generate_content(
-            model="gemini-3.5-flash",
-            contents=prompt
-        )
-
-        if hasattr(response, "text"):
-            resp_text = response.text or ""
-        else:
-            resp_text = str(response)
+        # Use secure client to call Gemini
+        response = secure_client.call_gemini_secure(prompt=prompt, model="gemini-3.5-flash")
+        
+        if not response:
+            st.error("Failed to get response from secure Gemini client")
+            return {"certificates": [], "skills": [], "summary": ""}
+            
+        resp_text = response
 
         start_marker = "###JSON_START###"
         end_marker = "###JSON_END###"

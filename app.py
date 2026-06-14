@@ -208,7 +208,7 @@ active_file_object = st.session_state["cached_raw_uploader"]
 
 # Process the uploaded file using core functionality
 df, metadata, extracted_text = process_uploaded_file(
-    active_file_object, file_name, file_bytes, audit_logger, pii_protector, current_lang
+    active_file_object, file_name, file_bytes, audit_logger, current_lang
 )
 
 # Handle unstructured files

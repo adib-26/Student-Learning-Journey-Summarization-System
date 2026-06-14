@@ -4,7 +4,7 @@ import streamlit as st
 import pandas as pd
 import re
 from PIL import Image
-from backend.ui_animations import inject_ui_animations, animated_summary
+from backend.ui_animations import animated_summary
 
 # =====================================================
 # SECURE CLIENT, PII, & AUDIT LOG INTEGRATION
@@ -55,7 +55,7 @@ def initialize_security_components():
         st.stop()
 
 
-def process_uploaded_file(active_file_object, file_name, file_bytes, audit_logger, pii_protector, current_lang):
+def process_uploaded_file(active_file_object, file_name, file_bytes, audit_logger, current_lang):
     """Process uploaded file and handle lazy loading"""
     df = st.session_state.get("processed_df")
     metadata = st.session_state.get("processed_metadata")
@@ -362,7 +362,6 @@ def generate_and_download_report(stats, df, student_info, student_name, extracte
     # =====================================================
     # AI SUMMARY (TUNED TO INTERCEPT VIA SECURE WRAPPER + PII)
     # =====================================================
-    import re
     from backend.pii_protection import PIIProtector
     pii_protector = PIIProtector()
     
@@ -373,11 +372,10 @@ def generate_and_download_report(stats, df, student_info, student_name, extracte
         audit_logger = AuditLogger(custom_session_id=st.session_state["user_session_token"])
     
     if "secure_client" in st.session_state:
-        secure_client = st.session_state.get("secure_client")
+        pass
     else:
         from backend.secure_gemini_client import SecureGeminiClient
-        secure_client = SecureGeminiClient()
-    
+
     cleaned_df = df
     
     # Handle plot stats updates if needed
@@ -445,7 +443,6 @@ def generate_and_download_report(stats, df, student_info, student_name, extracte
     )
     
     # PII protection for AI processing
-    safe_student_context = pii_protector.anonymize_student_data(student_info if isinstance(student_info, dict) else {})
     safe_extracted_text = pii_protector.redact_pii(extracted_text or "")
     stats["summary_context"] = safe_extracted_text
 
@@ -507,13 +504,6 @@ def generate_and_download_report(stats, df, student_info, student_name, extracte
     stats["highest_score"] = highest_score
     stats["lowest_score"] = lowest_score
     stats["total_records"] = len(cleaned_df)
-
-    page_html = (
-        f"Student: {student_name}\n"
-        f"Average Score: {avg_score:.2f}\n"
-        f"Total Records: {len(cleaned_df)}\n\n"
-        f"Executive Summary:\n{translated_summary}\n"
-    )
 
     # =====================================================
     # DOWNLOAD
