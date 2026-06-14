@@ -232,7 +232,7 @@ def build_detailed_educational_insight(
     pronoun_subject = "She" if gender == "Female" else "He"
 
     parts = [
-        f"{student_name}, {student_details_sentence or 'the student'}, demonstrates consistent academic engagement."]
+        f"{student_name}, {student_details_sentence}, demonstrates consistent academic engagement."]
 
     if subjects:
         strongest_t = translate_subject_name(strongest) if strongest else None
@@ -289,15 +289,23 @@ def improve_with_llm(
     # 1. Clean data payloads using your updated PII layer beforehand
     safe_student_context = pii_protector.anonymize_student_data(stats.get("student_details", {}))
     safe_draft_summary = pii_protector.redact_pii(summary)
+    
+    # Debug: Print what's actually being sent to LLM
+    logger.info(f"Sending to LLM - Draft summary: {safe_draft_summary}")
+    print(f"DEBUG: safe_draft_summary = {safe_draft_summary}")
 
     # 2. Re-build explicit non-leaking engineering template instructions
     safe_prompt = (
-        "Rewrite the following student performance summary to be grammatically correct and natural.\n"
-        "Ensure subject scores and behavioral descriptions remain separate.\n\n"
+        "Your task is to transform the following draft student performance summary into a professional, insightful, and natural-sounding narrative. "
+        "You are encouraged to rephrase, restructure, and connect ideas to create a more polished and readable summary.\n\n"
+        f"DRAFT NARRATIVE (USE ONLY THESE FACTS):\n{safe_draft_summary}\n\n"
         f"CONTEXT METADATA:\n- Student tracking verification: {safe_student_context.get('student_id', 'Anonymous')}\n\n"
-        f"DRAFT NARRATIVE:\n{safe_draft_summary}\n\n"
-        "Instructions:\n"
-        "Do NOT mention real identities or private data keys. Return ONLY the single clean polished paragraph."
+        "CRITICAL INSTRUCTIONS:\n"
+        "1. **Incorporate All Facts:** You MUST include every piece of information from the draft (subjects, scores, activities, traits). No data can be omitted.\n"
+        "2. **Enhance Readability:** Improve grammar, flow, and sentence structure to make the summary sound natural and professional.\n"
+        "3. **Add Connecting Insights:** Based ONLY on the provided data, you can add brief insights that connect different pieces of information. For example, link high scores in certain subjects to potential strengths. Do not invent new facts.\n"
+        "4. **PII Protection:** Do NOT mention real identities or private data keys.\n"
+        "5. **Output:** Return ONLY the single, clean, polished paragraph as your final answer."
     )
 
     try:
@@ -310,7 +318,7 @@ def improve_with_llm(
         )
 
         # Main API call execution
-        response = secure_client.call_gemini_secure(prompt=safe_prompt, model="gemini-2.5-flash")
+        response = secure_client.call_gemini_secure(prompt=safe_prompt, model="gemini-3.5-flash")
         response_time = (time.time() - start_time) * 1000
 
         audit_logger.log_api_call(

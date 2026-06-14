@@ -88,7 +88,7 @@ def get_text_info(uploaded_file):
         if not isinstance(certificates, list):
             certificates = []
 
-        # Sanitize summary: 4-5 sentences, factual, plain-language
+        # Sanitize summary: 3-7 sentences, factual, plain-language
         summary = ai_data.get("summary", "") or ""
         summary = _sanitize_summary(summary, has_numerical)
 
@@ -124,7 +124,7 @@ def _extract_certificate_data_with_gemini(text_content: str) -> dict:
     """
     Send markdown text to Gemini and request a robust JSON response.
     Key changes:
-      - Ask for a short 4–5 sentence summary (plain language).
+      - Ask for a short 3–7 sentence summary (plain language).
       - Instruct model not to use strong adjectives like "expert" unless numeric or credential evidence exists.
       - Ask model to wrap JSON between explicit markers to ease parsing.
       - Request skills without scores if no numeric evidence.
@@ -149,9 +149,11 @@ Rules:
    - Include "Score" (integer 0-100) ONLY if the document contains numeric evidence (scores, percentages, grades).
    - If no numeric evidence exists, do NOT invent scores; return only the Label.
 
-3) Summary: return a short, plain-language summary in 4–5 sentences.
-   - Use simple, clear English suitable for a high-school reader.
+3) Summary: return a short, engaging, and cohesive narrative summary in 3–7 sentences.
+   - Rewrite the facts into a natural, flowing story. You are encouraged to rephrase, connect related ideas, and use conversational but professional language to make it sound less robotic.
+   - Use clear English suitable for a high-school reader.
    - Avoid exaggerated words like "expert", "master", "specialist", or "dedicated" unless the document contains clear numeric or credential evidence.
+   - You may draw simple, logical connections between the facts presented (e.g., link a certificate in programming to a skill in software development) but NEVER invent new information that is not explicitly in the document.
    - If certificates do not show numeric achievement, prefer phrasing like "This certificate widened knowledge in X" or "This course helped build skills in X."
    - Keep it factual and modest. Do not add suggestions or future steps.
 
@@ -168,7 +170,7 @@ Return ONLY the JSON object between the markers. Example:
   "skills": [
     {{"Label":"Skill Name","Score":85}}
   ],
-  "summary":"Short 4–5 sentence summary here."
+  "summary":"Short 3–7 sentence summary here."
 }}
 ###JSON_END###
 """
@@ -249,7 +251,7 @@ def _extract_largest_json_object(text: str) -> str:
 def _sanitize_summary(summary: str, has_numerical: bool) -> str:
     """
     Ensure the summary is short, factual, and plain-language.
-      - Keep 4–5 sentences.
+      - Keep 3–7 sentences.
       - Remove or soften exaggerated adjectives when no numeric evidence exists.
       - Prefer evidence-based phrasing and simple wording.
     """
@@ -263,8 +265,8 @@ def _sanitize_summary(summary: str, has_numerical: bool) -> str:
     sentences = re.split(r'(?<=[.!?])\s+', s)
     sentences = [sent.strip() for sent in sentences if sent.strip()]
 
-    # If model returned fewer than 4 sentences, try to split long sentences by commas to reach 4-5 short sentences
-    if len(sentences) < 4:
+    # If model returned fewer than 3 sentences, try to split long sentences by commas to reach 3-7 short sentences
+    if len(sentences) < 3:
         expanded = []
         for sent in sentences:
             # If sentence is long, split by semicolon or comma into shorter clauses
@@ -278,20 +280,20 @@ def _sanitize_summary(summary: str, has_numerical: bool) -> str:
                 expanded.append(sent)
         sentences = [re.sub(r'\s+', ' ', x).strip() for x in expanded if x.strip()]
 
-    # Now enforce 4-5 sentences: keep first 4, optionally a 5th if concise
-    if len(sentences) > 5:
-        sentences = sentences[:5]
-    elif len(sentences) < 4:
+    # Now enforce 3-7 sentences: keep first 7
+    if len(sentences) > 7:
+        sentences = sentences[:7]
+    elif len(sentences) < 3:
         # If still short, keep what we have but try to make them concise
-        # Join and then re-split by clauses to attempt to reach 4 sentences
+        # Join and then re-split by clauses to attempt to reach 3 sentences
         joined = " ".join(sentences)
         clauses = re.split(r'(?<=[.!?])\s+|[;,:]\s+', joined)
         clauses = [c.strip() for c in clauses if c.strip()]
-        if len(clauses) >= 4:
-            sentences = clauses[:4]
+        if len(clauses) >= 3:
+            sentences = clauses[:3]
         else:
             # fallback: pad by repeating a concise factual phrase if necessary (avoid exaggeration)
-            while len(sentences) < 4:
+            while len(sentences) < 3:
                 sentences.append("No additional measurable results were provided.")
 
     # Softening replacements when no numeric evidence
@@ -322,14 +324,14 @@ def _sanitize_summary(summary: str, has_numerical: bool) -> str:
         sanitized.append(s_sent)
 
     # Ensure final text length is reasonable
-    final_sentences = sanitized[:5]
+    final_sentences = sanitized[:7]
     final = " ".join(final_sentences).strip()
 
-    # If still too long, try to keep first 4 sentences only
-    if len(final) > 600:
-        final = " ".join(final_sentences[:4])
-        if len(final) > 600:
-            final = final[:597].rstrip() + "..."
+    # If still too long, try to keep first 6 sentences only
+    if len(final) > 800:
+        final = " ".join(final_sentences[:6])
+        if len(final) > 800:
+            final = final[:797].rstrip() + "..."
 
     return final
 

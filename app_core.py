@@ -455,10 +455,10 @@ def generate_and_download_report(stats, df, student_info, student_name, extracte
         pii_redacted=len(pii_protector.redacted_map)
     )
 
-    safe_prompt, _ = pii_protector.create_safe_prompt(
-        stats_dict=stats,
-        student_context=safe_student_context
-    )
+    # Add student name to stats so it's included in the draft summary
+    student_name = student_info.get('student_name', '') if isinstance(student_info, dict) else ''
+    if student_name:
+        stats['student_name'] = student_name
 
     try:
         import time
@@ -470,23 +470,18 @@ def generate_and_download_report(stats, df, student_info, student_name, extracte
             insight_msg = ui_translator.get_string("🔒 Generating secure encrypted insight narrative...", current_lang)
 
         with st.spinner(insight_msg):  # type: ignore
-            summary = secure_client.call_gemini_secure(
-                prompt=safe_prompt,
-                model="gemini-2.5-flash"
-            )
+            # Use our fixed summary generator that preserves all details
+            summary = generate_summary(stats, safe_extracted_text, mode="insight")
 
         latency = (time.time() - start_time) * 1000
         audit_logger.log_api_call(
             api_service="Google AI Studio",
-            endpoint="call_gemini_secure",
-            request_size=len(safe_prompt),
+            endpoint="generate_summary",
+            request_size=len(str(stats)) + len(safe_extracted_text),
             response_time_ms=latency,
             status_code=200 if summary else 500,
             pii_protected=True
         )
-
-        if not summary:
-            summary = generate_summary(stats, safe_extracted_text, mode="insight")
     except Exception as e:
         audit_logger.log_error(error_type="LLM_PROMPT_ERROR", message=str(e), stage="SUMMARY_GENERATION")
         summary = generate_summary(stats, safe_extracted_text, mode="insight")
@@ -497,7 +492,7 @@ def generate_and_download_report(stats, df, student_info, student_name, extracte
     animated_summary(translated_summary)
 
     audit_logger.log_summary_generation(
-        input_size=len(safe_prompt),
+        input_size=len(str(stats)) + len(safe_extracted_text),
         output_size=len(summary) if summary else 0,
         model="gemini-2.5-flash",
         tokens_used=0
