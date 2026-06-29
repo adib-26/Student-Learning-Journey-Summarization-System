@@ -126,7 +126,7 @@ http://localhost:8501
 | .png / .jpg  | Scanned academic documents |
 
 ---
-## 🖼️ Application Preview
+## 🖼️ Application Preview Video
 
 [![Application Demo](https://img.youtube.com/vi/pLLHletb9pE/maxresdefault.jpg)](https://youtu.be/pLLHletb9pE)
 
