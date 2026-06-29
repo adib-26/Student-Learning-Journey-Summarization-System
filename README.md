@@ -128,6 +128,8 @@ http://localhost:8501
 ---
 ## 🖼️ Application Preview
 
+https://youtu.be/pLLHletb9pE
+
 <img width="1319" height="646" alt="Screenshot 2026-05-02 at 3 53 19 PM" src="https://github.com/user-attachments/assets/a0b58878-0ebb-4ee2-94a5-553fa4e7795d" />
 <img width="1310" height="482" alt="Screenshot 2026-05-02 at 3 54 04 PM" src="https://github.com/user-attachments/assets/a63ffbe2-321b-4e62-9284-09b348a05d01" />
 <img width="1284" height="521" alt="Screenshot 2026-05-02 at 3 54 43 PM" src="https://github.com/user-attachments/assets/2e414fef-79cf-4878-a7d4-1603eeda5c4a" />
