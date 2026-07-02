@@ -23,7 +23,7 @@
 
 The **Student Learning Journey Summarization System** is an AI-powered educational analytics platform that transforms raw academic records into meaningful insights, multilingual reports, and professional AI-generated summaries.
 
-Built with **Streamlit**, powered by **Google Gemini 2.5 Flash**, and integrated with the **DeepL Translation API**, the application processes both structured datasets and unstructured academic documents to generate comprehensive student learning reports.
+Built with **Streamlit**, powered by **Google Gemini 3.5 Flash**, and integrated with the **DeepL Translation API**, the application processes both structured datasets and unstructured academic documents to generate comprehensive student learning reports.
 
 The platform automates data cleaning, OCR processing, analytics, behavioral analysis, interactive visualization, AI-powered summarization, and multilingual translation, enabling educators and institutions to make informed, data-driven decisions.
 
@@ -41,7 +41,7 @@ Supported report languages include:
 |---|---|
 | Structured Data Processing | Cleans and processes CSV/Excel academic datasets |
 | Unstructured Document Processing | Extracts data from scanned documents using OCR |
-| AI Executive Summary | Generates professional summaries using Google Gemini 2.5 Flash |
+| AI Executive Summary | Generates professional summaries using Google Gemini 3.5 Flash |
 | DeepL Translation | Translates reports into multiple languages using DeepL API |
 | Interactive Analytics | Visualizes student performance through dynamic charts and dashboards |
 | Behavioral Analysis | Identifies learning patterns and behavioral trends |
@@ -59,7 +59,7 @@ Supported report languages include:
 |---|---|
 | Frontend | Streamlit |
 | Backend | Python |
-| AI Model | Google Gemini 2.5 Flash |
+| AI Model | Google Gemini 3.5 Flash |
 | Translation | DeepL API |
 | Data Processing | Pandas |
 | OCR | Pillow |
