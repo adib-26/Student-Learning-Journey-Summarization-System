@@ -215,12 +215,10 @@ The application will be available at `http://localhost:8501`.
 - User authentication and authorization
 - Cloud-native deployment (AWS, Azure, GCP)
 - Historical student performance tracking
-- Batch document processing
 - REST API for third-party integration
 - Database support (PostgreSQL / MySQL)
 - Role-based access control
-- Real-time analytics dashboard
-
+  
 ---
 
 ## License
