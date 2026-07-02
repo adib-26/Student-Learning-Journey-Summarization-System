@@ -9,7 +9,7 @@
 
 **AI-Powered Educational Data Analytics Platform**
 
-**Streamlit • Google Gemini 2.5 Flash • DeepL Translation • OCR • Docker • Production Ready**
+**Streamlit • Google Gemini 3.5 Flash • DeepL Translation • OCR • Docker • Production Ready**
 
 **Demo Video:** https://youtu.be/pLLHletb9pE
 
