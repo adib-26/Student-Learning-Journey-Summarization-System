@@ -48,7 +48,7 @@ def prepare_chart_data(df: pd.DataFrame, x_col: Optional[str], y_col: str) -> pd
 def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List[bytes]:
     images: List[bytes] = []
 
-    numeric_cols = cleaned_df.select_dtypes(include=["number"]).columns.tolist()
+    numeric_cols = cleaned_df.select_dtypes(include="number").columns.tolist()
     numeric_cols = [c for c in numeric_cols if c.lower() != "maximum"]
 
     valid_x_cols = get_valid_x_axis_columns(cleaned_df)
@@ -210,7 +210,7 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
             return None
 
     x_label_text = translated_x_cols_map.get(
-        x_axis, ui_translator.get_string("index", current_lang)
+        x_axis or "", ui_translator.get_string("index", current_lang)
     )
     y_label_text = translated_y_cols_map.get(y_axis, y_axis)
 

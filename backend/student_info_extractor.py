@@ -122,7 +122,7 @@ def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
     df_filled = df.copy()
     if "Section" in df_filled.columns or df_filled.columns[0] == "Section":
         section_col = "Section" if "Section" in df_filled.columns else df_filled.columns[0]
-        df_filled[section_col] = df_filled[section_col].fillna(method='ffill')
+        df_filled[section_col] = df_filled[section_col].ffill()
         # Convert to string and lower for comparison
         df_filled['_section_lower'] = df_filled[section_col].astype(str).str.lower()
 

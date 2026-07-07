@@ -1,6 +1,6 @@
 import re
 import hashlib
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ class PIIProtector:
         'student_id': r'\b\d{7,8}\b',  # Word boundaries ensure scores/metrics aren't eaten
     }
 
-    def __init__(self, salt: str = None):
+    def __init__(self, salt: Optional[str] = None):
         # Use a localized salt configuration to prevent lookup dictionary attacks on hashes
         self.salt = salt or "DefaultSystemSecureSaltKey_2026!"
         self.redacted_map = {}
