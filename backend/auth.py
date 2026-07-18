@@ -1,82 +1,71 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import (
-    create_access_token,
-    jwt_required,
-    get_jwt_identity
-)
-from werkzeug.security import generate_password_hash, check_password_hash
+"""Versioned REST authentication endpoints."""
 
-auth_bp = Blueprint("auth", __name__)
+from __future__ import annotations
 
-# In-memory user store (FYP-safe)
-# Each user has a password hash and a role ("student" or "teacher")
-USERS = {}
+import sqlite3
+
+from flask import Blueprint, current_app, jsonify
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from .api_utils import ApiError, json_safe, json_body, required_string
 
 
-@auth_bp.route("/register", methods=["POST"])
+auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
+
+
+def _db():
+    return current_app.extensions["api_db"]
+
+
+@auth_bp.post("/register")
 def register():
-    data = request.get_json()
-    username = data.get("username")
-    password = data.get("password")
-    role = data.get("role")
+    data = json_body()
+    username = required_string(data, "username", max_length=80)
+    password = required_string(data, "password", max_length=128)
+    role = required_string(data, "role", max_length=20).lower()
 
-    if not username or not password or not role:
-        return jsonify({"error": "Missing credentials or role"}), 400
+    if len(password) < 8:
+        raise ApiError("VALIDATION_ERROR", "'password' must be at least 8 characters.", 422)
+    if role not in {"student", "teacher"}:
+        raise ApiError("VALIDATION_ERROR", "'role' must be either 'student' or 'teacher'.", 422)
 
-    if role not in ["student", "teacher"]:
-        return jsonify({"error": "Role must be 'student' or 'teacher'"}), 400
+    try:
+        # PBKDF2 keeps local development compatible with Python builds that do
+        # not expose hashlib.scrypt while still using a slow password hash.
+        user = _db().create_user(
+            username,
+            generate_password_hash(password, method="pbkdf2:sha256:600000"),
+            role,
+        )
+    except sqlite3.IntegrityError as exc:
+        raise ApiError("CONFLICT", "A user with that username already exists.", 409) from exc
 
-    if username in USERS:
-        return jsonify({"error": "User already exists"}), 409
-
-    USERS[username] = {
-        "password": generate_password_hash(password, method="pbkdf2:sha256"),
-        "role": role
-    }
-
-    return jsonify({"message": f"User '{username}' registered successfully as {role}"}), 201
+    response = jsonify({"data": json_safe(user)})
+    response.status_code = 201
+    response.headers["Location"] = f"/api/v1/auth/me"
+    return response
 
 
-@auth_bp.route("/login", methods=["POST"])
+@auth_bp.post("/login")
 def login():
-    data = request.get_json()
-    username = data.get("username")
-    password = data.get("password")
+    data = json_body()
+    username = required_string(data, "username", max_length=80)
+    password = required_string(data, "password", max_length=128)
+    user = _db().get_user_by_username(username)
 
-    user = USERS.get(username)
-    if not user or not check_password_hash(user["password"], password):
-        return jsonify({"error": "Invalid credentials"}), 401
+    if user is None or not check_password_hash(user["password_hash"], password):
+        raise ApiError("INVALID_CREDENTIALS", "Invalid username or password.", 401)
 
-    # ✅ Identity is just the username (string)
-    access_token = create_access_token(identity=username)
-
-    # Still return the role in the response so frontend knows
-    return jsonify({"access_token": access_token, "role": user["role"]}), 200
+    token = create_access_token(identity=user["id"], additional_claims={"role": user["role"]})
+    user.pop("password_hash", None)
+    return jsonify({"data": {"access_token": token, "token_type": "Bearer", "user": json_safe(user)}})
 
 
-@auth_bp.route("/profile", methods=["GET"])
+@auth_bp.get("/me")
 @jwt_required()
-def profile():
-    username = get_jwt_identity()  # returns "student1" or "teacher1"
-    role = USERS[username]["role"]
-    return jsonify({"username": username, "role": role}), 200
-
-
-@auth_bp.route("/teacher-dashboard", methods=["GET"])
-@jwt_required()
-def teacher_dashboard():
-    username = get_jwt_identity()
-    role = USERS[username]["role"]
-    if role != "teacher":
-        return jsonify({"error": "Access denied"}), 403
-    return jsonify({"message": f"Welcome, {username} (teacher)!"}), 200
-
-
-@auth_bp.route("/student-dashboard", methods=["GET"])
-@jwt_required()
-def student_dashboard():
-    username = get_jwt_identity()
-    role = USERS[username]["role"]
-    if role != "student":
-        return jsonify({"error": "Access denied"}), 403
-    return jsonify({"message": f"Welcome, {username} (student)!"}), 200
+def me():
+    user = _db().get_user(get_jwt_identity())
+    if user is None:
+        raise ApiError("UNAUTHORIZED", "The authenticated user no longer exists.", 401)
+    return jsonify({"data": json_safe(user)})

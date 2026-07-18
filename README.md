@@ -212,13 +212,48 @@ The application will be available at `http://localhost:8501`.
 
 ## Future Improvements
 
-- User authentication and authorization
 - Cloud-native deployment (AWS, Azure, GCP)
 - Historical student performance tracking
-- REST API for third-party integration
 - Database support (PostgreSQL / MySQL)
 - Role-based access control
   
+## REST API
+
+The project includes a versioned Flask API alongside the Streamlit interface. Run it with:
+
+```bash
+FLASK_APP=backend.app flask run --port 5000
+```
+
+Set `JWT_SECRET_KEY` and `API_DATABASE_PATH` in production. The API stores users and analysis results in SQLite by default and scopes analysis resources to the authenticated user.
+
+Available endpoints:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/v1/health` | Service health check |
+| POST | `/api/v1/auth/register` | Register a student or teacher |
+| POST | `/api/v1/auth/login` | Obtain a JWT access token |
+| GET | `/api/v1/auth/me` | Get the authenticated user |
+| POST | `/api/v1/analyses` | Create analytics from JSON records or a CSV/XLSX upload |
+| GET | `/api/v1/analyses` | List the authenticated user's analyses with pagination |
+| GET | `/api/v1/analyses/<id>` | Get one analysis |
+| DELETE | `/api/v1/analyses/<id>` | Delete one analysis |
+
+JSON analysis example:
+
+```json
+{
+  "student": {"name": "Aisha"},
+  "records": [
+    {"subject": "Mathematics", "score": 90, "maximum": 100},
+    {"subject": "Science", "score": 75, "maximum": 100}
+  ]
+}
+```
+
+All API errors use a predictable shape: `{"error": {"code": "...", "message": "..."}, "request_id": "..."}`.
+
 ---
 
 ## License
