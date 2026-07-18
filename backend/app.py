@@ -25,6 +25,23 @@ def create_app(config_override=None):
     jwt = JWTManager(app)
     app.register_blueprint(api_bp)
 
+    @app.get("/")
+    def index():
+        """Provide a useful response when the API URL is opened in a browser."""
+        return jsonify({
+            "data": {
+                "service": "student-learning-api",
+                "status": "ok",
+                "version": "v1",
+                "health": "/api/v1/health",
+                "documentation": "/api/v1/health",
+            }
+        })
+
+    @app.get("/favicon.ico")
+    def favicon():
+        return "", 204
+
     @app.errorhandler(ApiError)
     def handle_api_error(error):
         return error_response(error.code, error.message, error.status_code, error.details)
