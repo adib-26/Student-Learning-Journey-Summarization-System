@@ -195,7 +195,7 @@ The application will be available at `http://localhost:8501`.
 
 ## Production Features
 
-- Google Gemini 2.5 Flash integration
+- Google Gemini 3.5 Flash integration
 - DeepL Translation API integration
 - Secure API key management via environment variables
 - Docker and Docker Compose deployment
@@ -232,10 +232,7 @@ Available endpoints:
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/api/v1/health` | Service health check |
-| POST | `/api/v1/auth/register` | Register a student or teacher |
-| POST | `/api/v1/auth/login` | Obtain a JWT access token |
-| GET | `/api/v1/auth/me` | Get the authenticated user |
-| POST | `/api/v1/analyses` | Create analytics from JSON records or a CSV/XLSX upload |
+| POST | `/api/v1/analyses` | Create analytics from JSON records or a CSV/XLSX/Image/PDF upload |
 | GET | `/api/v1/analyses` | List the authenticated user's analyses with pagination |
 | GET | `/api/v1/analyses/<id>` | Get one analysis |
 | DELETE | `/api/v1/analyses/<id>` | Delete one analysis |
