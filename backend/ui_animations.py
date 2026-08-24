@@ -1,4 +1,6 @@
 # --- UI/Animation Injection (place after st.set_page_config and before st.title) ---
+from html import escape
+
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -101,6 +103,11 @@ def inject_ui_animations():
 
 # ---------- PREMIUM SUMMARY WITH ADVANCED ANIMATIONS ----------
 
+def _summary_html(summary_text: object) -> str:
+    """Escape model/user text before placing it in the component iframe."""
+    return escape(str(summary_text or ""), quote=True).replace("\n", "<br>\n")
+
+
 def animated_summary(summary_text):
     components.html(f"""
     <style>
@@ -147,6 +154,19 @@ def animated_summary(summary_text):
         to {{
             opacity: 1;
             transform: translateY(0);
+        }}
+    }}
+
+    @media (prefers-reduced-motion: reduce) {{
+        *, *::before, *::after {{
+            animation: none !important;
+            transition: none !important;
+            scroll-behavior: auto !important;
+        }}
+
+        #summary-box {{
+            opacity: 1;
+            transform: none;
         }}
     }}
 
@@ -278,21 +298,11 @@ def animated_summary(summary_text):
             </div>
 
             <div id="summary-content">
-                {summary_text}
+                {_summary_html(summary_text)}
             </div>
 
         </div>
     </div>
 
-    <script>
-    setTimeout(() => {{
-        document.getElementById("summary-wrapper")
-        .scrollIntoView({{
-            behavior: "smooth",
-            block: "center"
-        }});
-    }}, 300);
-    </script>
-
-    """, height=350)
+    """, height=420, scrolling=True)
     # --- End UI/Animation Injection ---

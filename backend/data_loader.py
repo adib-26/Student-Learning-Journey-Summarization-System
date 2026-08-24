@@ -6,8 +6,19 @@ Supports Excel, CSV, PDF, and image files with cross-language persistence cachin
 import pandas as pd
 from typing import Tuple, Union, Dict
 import io
+import logging
 import re
 import streamlit as st
+
+from backend.mlx_glm_ocr import (
+    GlmOcrResult,
+    extract_text_with_glm_ocr,
+    get_glm_ocr_settings,
+)
+from backend.file_safety import validate_xlsx_archive
+
+
+logger = logging.getLogger(__name__)
 
 try:
     import pytesseract
@@ -37,8 +48,98 @@ def extract_text_from_image(image_file) -> str:
         image = Image.open(image_file)
         text = pytesseract.image_to_string(image)
         return text.strip()
-    except Exception as e:
-        return f"Error extracting text: {e}"
+    except Exception:
+        logger.warning(
+            "Image OCR failed; using the next available fallback", exc_info=True
+        )
+        return ""
+
+
+def _extract_pdf_text_from_bytes(file_bytes: bytes, maximum_pages: int = 20) -> str:
+    """Bounded legacy native PDF fallback when GLM OCR is unavailable."""
+    try:
+        import pypdf
+        pdf_reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+        page_count = len(pdf_reader.pages)
+        pages = []
+        for page_num in range(min(page_count, maximum_pages)):
+            page = pdf_reader.pages[page_num]
+            page_text = page.extract_text()
+            if page_text:
+                pages.append(f"===== Page {page_num + 1} =====\n{page_text}")
+        if pages and page_count > maximum_pages:
+            pages.append(
+                f"[DOCUMENT PAGE LIMIT REACHED: used the first {maximum_pages} of {page_count} page(s).]"
+            )
+        return _fix_pdf_extraction_issues("\n\n".join(pages)).strip()
+    except Exception:
+        return ""
+
+
+def _is_usable_fallback_text(text: object) -> bool:
+    """Keep operational error strings out of the Qwen evidence path."""
+    if not isinstance(text, str) or not text.strip():
+        return False
+    lowered = text.strip().casefold()
+    return not lowered.startswith(("ocr not available", "error extracting text"))
+
+
+def extract_unstructured_text(file_name: str, file_bytes: bytes) -> dict:
+    """Use GLM-OCR first where appropriate, then preserve native fallbacks.
+
+    The returned dictionary is intentionally simple so it can live in
+    Streamlit's per-session cache without serialising a model/client object.
+    For born-digital PDFs the GLM adapter returns native text directly and only
+    visually OCRs scanned/no-text pages in its default shared-HTTP mode.
+    """
+    glm_result: GlmOcrResult = extract_text_with_glm_ocr(file_name, file_bytes)
+    # A hard source-size rejection exists to keep one oversized upload from
+    # exhausting unified memory. Do not defeat that guard by immediately
+    # sending the same bytes into a legacy fallback parser.
+    if glm_result.error in {
+        "document exceeds the configured OCR safety limit",
+        "image exceeds OCR safety limit",
+    }:
+        return glm_result.to_dict()
+    if _is_usable_fallback_text(glm_result.text):
+        result = glm_result.to_dict()
+        # Preserve the project's legacy PDF cleanup rules for both native and
+        # mixed native/GLM page blocks before Qwen sees the evidence.
+        if (file_name or "").casefold().endswith(".pdf"):
+            result["text"] = _fix_pdf_extraction_issues(result["text"])
+        return result
+
+    lower_name = (file_name or "").casefold()
+    if lower_name.endswith(".pdf"):
+        native_text = _extract_pdf_text_from_bytes(
+            file_bytes,
+            maximum_pages=get_glm_ocr_settings()["max_total_pages"],
+        )
+        if _is_usable_fallback_text(native_text):
+            return {
+                "text": native_text,
+                "engine": "pypdf-fallback",
+                "pages_attempted": glm_result.pages_attempted,
+                "pages_completed": glm_result.pages_completed,
+                "native_pages": glm_result.native_pages,
+                "skipped_pages": glm_result.skipped_pages,
+                "truncated": glm_result.truncated or "[DOCUMENT PAGE LIMIT REACHED:" in native_text,
+                "error": glm_result.error,
+            }
+    elif lower_name.endswith((".png", ".jpg", ".jpeg")):
+        fallback_text = extract_text_from_image(io.BytesIO(file_bytes))
+        if _is_usable_fallback_text(fallback_text):
+            return {
+                "text": fallback_text.strip(),
+                "engine": "tesseract-fallback",
+                "pages_attempted": glm_result.pages_attempted,
+                "pages_completed": glm_result.pages_completed,
+                "native_pages": 0,
+                "skipped_pages": 0,
+                "truncated": False,
+                "error": glm_result.error,
+            }
+    return glm_result.to_dict()
 
 
 def extract_metadata_from_excel(df_raw: pd.DataFrame) -> Dict[str, str]:
@@ -176,6 +277,8 @@ def load_file(file_name: str, file_bytes: bytes) -> Tuple[Union[pd.DataFrame, No
 
         # --- Excel ---
         elif filename_lower.endswith((".xlsx", ".xls")):
+            if filename_lower.endswith(".xlsx"):
+                validate_xlsx_archive(file_bytes)
             df_no_header = pd.read_excel(io.BytesIO(file_bytes), header=None)
             metadata = extract_metadata_from_excel(df_no_header)
 
@@ -200,40 +303,26 @@ def load_file(file_name: str, file_bytes: bytes) -> Tuple[Union[pd.DataFrame, No
 
         # --- PDF ---
         elif filename_lower.endswith(".pdf"):
-            try:
-                import pypdf
-                pdf_reader = pypdf.PdfReader(io.BytesIO(file_bytes))
-
-                full_text = ""
-                for page_num, page in enumerate(pdf_reader.pages):
-                    page_text = page.extract_text()
-                    if page_text:
-                        full_text += f"===== Page {page_num + 1} =====\n"
-                        full_text += page_text + "\n\n"
-
-                if full_text.strip():
-                    full_text = _fix_pdf_extraction_issues(full_text)
-                    return None, full_text.strip()
-                else:
-                    return None, "PDF contains no extractable text (might be scanned images)"
-
-            except ImportError:
-                pypdf = None
-                return None, "PyPDF not installed. Install with: pip install PyPDF"
-            except Exception as e:
-                return None, f"Error extracting PDF text: {e}"
+            result = extract_unstructured_text(file_name, file_bytes)
+            text = result.get("text", "") if isinstance(result, dict) else ""
+            if _is_usable_fallback_text(text):
+                return None, text.strip()
+            return None, "PDF contains no extractable text (might be scanned images)"
 
         # --- Images ---
         elif filename_lower.endswith((".png", ".jpg", ".jpeg")):
-            text = extract_text_from_image(io.BytesIO(file_bytes))
-            return None, text
+            result = extract_unstructured_text(file_name, file_bytes)
+            text = result.get("text", "") if isinstance(result, dict) else ""
+            if _is_usable_fallback_text(text):
+                return None, text.strip()
+            return None, "Image contains no extractable text"
 
         else:
             return None, "Unsupported file format."
 
-    except Exception as e:
-        import traceback
-        return None, f"Error loading file: {e}\n{traceback.format_exc()}"
+    except Exception as exc:
+        logger.warning("Uploaded file could not be loaded", exc_info=True)
+        raise ValueError("The uploaded file could not be read. Check its format and try again.") from exc
 
 
 def extract_metadata(df: pd.DataFrame) -> dict:
@@ -260,10 +349,9 @@ def preprocess_excel_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = df.dropna(how='all').reset_index(drop=True)
 
     for col in df.columns:
-        try:
-            df[col] = pd.to_numeric(df[col], errors='ignore')
-        except:
-            pass
+        converted = pd.to_numeric(df[col], errors="coerce")
+        if not (df[col].notna() & converted.isna()).any():
+            df[col] = converted
 
     return df
 
@@ -271,6 +359,7 @@ def preprocess_excel_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 __all__ = [
     'load_file',
     'extract_text_from_image',
+    'extract_unstructured_text',
     'extract_metadata_from_excel',
     'extract_metadata',
     'preprocess_excel_dataframe'

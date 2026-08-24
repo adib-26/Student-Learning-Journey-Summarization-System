@@ -4,7 +4,7 @@ import pandas as pd
 from typing import Optional, List
 
 from backend.data_cleaning import get_valid_x_axis_columns, get_auto_y_for_x_column
-from backend.text_visualizations import visualize_text
+from backend.text_visualizations import visualize_documented_skills, visualize_text
 
 # Import the dual-layered translation framework
 from backend.deepl_translator import translator, ui_translator
@@ -45,7 +45,18 @@ def prepare_chart_data(df: pd.DataFrame, x_col: Optional[str], y_col: str) -> pd
 # -----------------------------
 # Visualization Section
 # -----------------------------
-def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List[bytes]:
+def render_visualizations(
+    cleaned_df: pd.DataFrame,
+    extracted_text: str,
+    *,
+    certificates: Optional[List[dict]] = None,
+) -> List[bytes]:
+    """Render evidence-based charts for structured and unstructured inputs.
+
+    ``certificates`` is supplied by the unstructured Qwen extraction pass.  It
+    lets this function render a timeline/count chart without launching a second
+    local LLM request just to rediscover the same certificate data.
+    """
     images: List[bytes] = []
 
     numeric_cols = cleaned_df.select_dtypes(include="number").columns.tolist()
@@ -54,8 +65,31 @@ def render_visualizations(cleaned_df: pd.DataFrame, extracted_text: str) -> List
     valid_x_cols = get_valid_x_axis_columns(cleaned_df)
 
     if not numeric_cols:
-        visualize_text(extracted_text)
+        if certificates:
+            maybe_images = visualize_text(extracted_text, certificates=certificates)
+            if isinstance(maybe_images, list):
+                images.extend(maybe_images)
+        elif certificates is not None:
+            # Qwen completed this document analysis and found no certificates.
+            # A skill-presence chart is still valid evidence, unlike assigning
+            # arbitrary scores to each skill.
+            maybe_images = visualize_documented_skills(cleaned_df.to_dict("records"))
+            if isinstance(maybe_images, list):
+                images.extend(maybe_images)
+        else:
+            # Preserve the legacy structured-data text fallback.  Only this
+            # path may invoke the extractor because it has no cached evidence.
+            maybe_images = visualize_text(extracted_text)
+            if isinstance(maybe_images, list):
+                images.extend(maybe_images)
         return images
+
+    # A scored skills chart and a certificate timeline describe different
+    # evidence, so show both when the document contains both.
+    if certificates:
+        maybe_images = visualize_text(extracted_text, certificates=certificates)
+        if isinstance(maybe_images, list):
+            images.extend(maybe_images)
 
     current_lang = st.session_state.get("selected_language", "en")
 

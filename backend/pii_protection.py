@@ -1,9 +1,104 @@
 import re
 import hashlib
-from typing import Dict, Tuple, Optional
+import os
+import secrets
+from typing import Dict, Iterable, Optional, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
+
+# A process-local random fallback prevents a predictable, repository-shipped
+# hash salt. Set PII_HASH_SALT in a managed secret store only when stable
+# pseudonymous identifiers are genuinely required across restarts.
+_PROCESS_PII_SALT = os.getenv("PII_HASH_SALT") or secrets.token_urlsafe(32)
+
+
+class ExternalTranslationRedactor:
+    """Temporarily replace identifiers before text leaves the local device.
+
+    The placeholders are deliberately opaque to the translation provider and
+    are restored only in local memory after the response returns. This is a
+    data-minimisation measure, not a substitute for institutional approval to
+    use an external translation service.
+    """
+
+    _PATTERNS = (
+        ("EMAIL", re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")),
+        ("PHONE", re.compile(r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}")),
+        ("IC", re.compile(r"\b\d{6}-\d{2}-\d{4}\b")),
+        ("STUDENT_ID", re.compile(r"\b\d{7,8}\b")),
+    )
+
+    def __init__(self, known_values: Optional[Iterable[object]] = None):
+        if isinstance(known_values, (str, bytes)):
+            known_values = (known_values,)
+        self.known_values = tuple(
+            value.strip()
+            for value in (str(item or "") for item in (known_values or ()))
+            if len(value.strip()) >= 2
+        )
+        self._token_to_value: Dict[str, str] = {}
+        self._value_to_token: Dict[str, str] = {}
+        self._token_expected_count: Dict[str, int] = {}
+        # Each request uses a fresh nonce, so a source document cannot
+        # realistically contain a valid placeholder by accident.
+        self._nonce = secrets.token_hex(12).upper()
+
+    def _placeholder_for(self, value: str, category: str) -> str:
+        key = value.casefold()
+        existing = self._value_to_token.get(key)
+        if existing:
+            self._token_expected_count[existing] += 1
+            return existing
+
+        token = (
+            f"[[SLJS_{self._nonce}_{category}_"
+            f"{len(self._token_to_value) + 1:03d}_KEEP]]"
+        )
+        self._value_to_token[key] = token
+        self._token_to_value[token] = value
+        self._token_expected_count[token] = 1
+        return token
+
+    @property
+    def has_placeholders(self) -> bool:
+        """Whether this request contains values unsuitable for caching."""
+        return bool(self._token_to_value)
+
+    def protect(self, text: object) -> str:
+        """Return an external-safe representation of ``text``."""
+        protected = str(text or "")
+
+        # Preserve complete structured identifiers before replacing a known
+        # name. Otherwise a name such as "Aisha" could fragment
+        # ``aisha@example.com`` and expose the remaining domain externally.
+        for category, pattern in self._PATTERNS:
+            protected = pattern.sub(
+                lambda match: self._placeholder_for(match.group(0), category),
+                protected,
+            )
+
+        # Replace explicit values next (for example, the resolved student
+        # name), longest-first so a full name wins over an embedded fragment.
+        for value in sorted(set(self.known_values), key=len, reverse=True):
+            pattern = re.compile(re.escape(value), re.IGNORECASE)
+            protected = pattern.sub(
+                lambda match: self._placeholder_for(match.group(0), "PERSON"),
+                protected,
+            )
+        return protected
+
+    def restore(self, translated_text: object) -> Optional[str]:
+        """Restore placeholders, or fail closed if a provider altered one."""
+        restored = str(translated_text or "")
+        if any(
+            restored.count(token) != self._token_expected_count[token]
+            for token in self._token_to_value
+        ):
+            return None
+        for token, value in self._token_to_value.items():
+            restored = restored.replace(token, value)
+        return restored
 
 
 class PIIProtector:
@@ -18,8 +113,9 @@ class PIIProtector:
     }
 
     def __init__(self, salt: Optional[str] = None):
-        # Use a localized salt configuration to prevent lookup dictionary attacks on hashes
-        self.salt = salt or "DefaultSystemSecureSaltKey_2026!"
+        # Use a configured or process-local random salt to prevent lookup
+        # attacks against predictable pseudonymous identifiers.
+        self.salt = salt or _PROCESS_PII_SALT
         self.redacted_map = {}
 
     def redact_pii(self, text: str) -> str:
@@ -54,7 +150,7 @@ class PIIProtector:
             anonymous['student_id'] = f"STU_{hashed}"
             # Pop safely to protect object keys from accidental preservation
             anonymous.pop('student_name', None)
-            logger.info(f"Student metadata tracking randomized securely to ID token.")
+            logger.info("Student metadata tracking randomized securely to ID token.")
 
         # Clean potential trace structures
         for private_key in ['email', 'phone', 'ic_number', 'ic']:
@@ -64,7 +160,7 @@ class PIIProtector:
 
     def create_safe_prompt(self, stats_dict: Dict, student_context: Dict) -> Tuple[str, Dict]:
         """
-        Create structured Gemini analytics prompt completely cleared of PII markers.
+        Create structured LLM analytics prompt completely cleared of PII markers.
         Returns: (safe_prompt, redaction_log)
         """
         # Clear dictionary metadata structure

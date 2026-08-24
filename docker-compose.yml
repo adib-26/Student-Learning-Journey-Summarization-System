@@ -1,8 +1,25 @@
-version: "3.9"
 services:
   streamlit-app:
-    build: .
+    build:
+      context: .
     ports:
-      - "8501:8501"
+      - "127.0.0.1:8501:8501"
+    environment:
+      - DEEPL_API_KEY=${DEEPL_API_KEY:-}
+      # The vLLM server runs natively on the host (Metal GPU is not available
+      # inside Linux containers); the container reaches it via host.docker.internal.
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:8000/v1}
+      - LLM_MODEL=${LLM_MODEL:-mlx-community/Qwen2.5-3B-Instruct-4bit}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
-      - .:/app
+      - streamlit-logs:/app/logs
+      - backend-logs:/app/backend/logs
+      - api-data:/app/data
+    init: true
+    restart: unless-stopped
+
+volumes:
+  streamlit-logs:
+  backend-logs:
+  api-data:

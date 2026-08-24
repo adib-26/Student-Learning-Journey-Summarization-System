@@ -1,0 +1,38 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+secrets.toml
+.streamlit/secrets.toml
+
+# Python environments, bytecode, and test output
+.venv/
+venv/
+env/
+venv-python*/
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local runtime data and generated artifacts
+data/*.sqlite3
+data/*.sqlite3-*
+logs/
+backend/logs/
+*.log
+*.pkl
+*.save
+build/
+dist/
+*.egg-info/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store

@@ -23,15 +23,19 @@ def main():
         "-v",
         "--cov=backend/",
         "--cov-report=term-missing",
-        "--cov-fail-under=0"  # Set to higher number as you add more tests
+        "--cov-fail-under=45",
     ]
     
     try:
+        completed = subprocess.run(cmd, check=False)
+        if completed.returncode:
+            print("\n❌ Some tests failed. Please check the output above.")
+            return completed.returncode
         print("\n✅ All tests passed successfully!")
         return 0
-    except subprocess.CalledProcessError as e:
-        print("\n❌ Some tests failed. Please check the output above.")
-        return e.returncode
+    except OSError as e:
+        print(f"\n❌ Could not start pytest: {e}")
+        return 1
 
 
 if __name__ == "__main__":

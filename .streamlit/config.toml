@@ -1,0 +1,4 @@
+[server]
+# Reject oversized uploads at the Streamlit boundary before they are copied
+# into session state. Keep this aligned with APP_MAX_UPLOAD_BYTES by default.
+maxUploadSize = 32

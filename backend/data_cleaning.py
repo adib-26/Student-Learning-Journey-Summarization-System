@@ -37,14 +37,44 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     # Convert numeric-like columns where appropriate
     for col in df.columns:
-        try:
-            df[col] = pd.to_numeric(df[col], errors="ignore")
-        except Exception:
-            pass
+        # ``errors='ignore'`` is deprecated in pandas 2.2+.  Only replace a
+        # column when every non-empty value can be represented numerically;
+        # otherwise retain the original text values.
+        converted = pd.to_numeric(df[col], errors="coerce")
+        original_non_empty = df[col].notna() & df[col].astype(str).str.strip().ne("")
+        if not (original_non_empty & converted.isna()).any():
+            df[col] = converted
 
     # Remove fully empty rows
     df = df.dropna(how="all")
     return df
+
+
+def normalize_scores_to_percentage(df: pd.DataFrame) -> pd.DataFrame:
+    """Put comparable marked assessments on a 0–100 analytics scale.
+
+    A raw mark of 18/20 must not be ranked below 80/100. When a meaningful
+    maximum differs from 100, retain the original values for traceability and
+    make the canonical ``Score`` / ``Maximum`` pair percentage-based for all
+    downstream metrics, charts, and reports.
+    """
+    if not {"Score", "Maximum"}.issubset(df.columns):
+        return df
+
+    normalized = df.copy()
+    scores = pd.to_numeric(normalized["Score"], errors="coerce")
+    maximums = pd.to_numeric(normalized["Maximum"], errors="coerce")
+    scored_rows = scores.notna() & maximums.notna() & maximums.gt(0)
+    if not scored_rows.any() or maximums.loc[scored_rows].eq(100).all():
+        return normalized
+
+    normalized["Original Score"] = scores
+    normalized["Original Maximum"] = maximums
+    normalized.loc[scored_rows, "Score"] = (
+        scores.loc[scored_rows] / maximums.loc[scored_rows] * 100
+    )
+    normalized.loc[scored_rows, "Maximum"] = 100.0
+    return normalized
 
 
 # -----------------------------

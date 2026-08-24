@@ -1,4 +1,7 @@
 # app.py — MAIN ENTRY POINT: Educational Data Analytics Platform (Streamlit UI Layer)
+import os
+from html import escape
+
 import streamlit as st
 from backend.ui_animations import inject_ui_animations
 from backend.deepl_translator import ui_translator
@@ -18,9 +21,22 @@ from app_core import (
 st.set_page_config(
     page_title="Educational Data Analytics Platform",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed",
 )
 inject_ui_animations()
+
+
+def _configured_upload_limit() -> int:
+    """Read a bounded upload limit before copying a file into session state."""
+    default_limit = 32 * 1024 * 1024
+    try:
+        configured_limit = int(os.getenv("APP_MAX_UPLOAD_BYTES", str(default_limit)))
+    except ValueError:
+        return default_limit
+    return max(1, configured_limit)
+
+
+MAX_UPLOAD_BYTES = _configured_upload_limit()
 
 # Initialize security components
 secure_client, pii_protector, audit_logger = initialize_security_components()
@@ -34,21 +50,24 @@ with col3_header:
     st.markdown("### 🌐 Language / 語言")
     lang = st.selectbox(
         "Select Language:",
-        options=['en', 'ms', 'zh'],
+        options=['en', 'id', 'zh'],
         format_func=lambda x: {
             'en': '🇬🇧 English',
-            'ms': '🇲🇾 Bahasa Melayu',
-            'zh': '繁體中文'
+            'id': '🇮🇩 Bahasa Indonesia',
+            'zh': '中文'
         }[x],
         label_visibility="collapsed"
     )
 
-    if "previous_lang" not in st.session_state:
-        st.session_state.previous_lang = lang
-
     st.session_state.selected_language = lang
 
 current_lang = st.session_state.selected_language
+
+if current_lang != "en":
+    st.caption(
+        "Translations are processed by DeepL, an external service. "
+        "Use this option only for data you are authorised to share."
+    )
 
 with col1_header:
     translated_title = ui_translator.get_string("title", current_lang)
@@ -56,15 +75,14 @@ with col1_header:
 
     st.title(f"📊 {translated_title}")
     st.caption(translated_subtitle)
-    
-# Show Gemini quota warning if credits are exhausted
-if hasattr(secure_client, 'quota_exhausted') and secure_client.quota_exhausted:
-    if current_lang == 'ms':
-        quota_msg = ui_translator.get_string("gemini_quota_warning_ms", current_lang)
+# Show a warning while the local AI server is unreachable
+if getattr(secure_client, 'service_unavailable', False):
+    if current_lang == 'id':
+        quota_msg = ui_translator.get_string("llm_service_warning_id", current_lang)
     elif current_lang == 'zh':
-        quota_msg = ui_translator.get_string("gemini_quota_warning_zh", current_lang)
+        quota_msg = ui_translator.get_string("llm_service_warning_zh", current_lang)
     else:
-        quota_msg = ui_translator.get_string("gemini_quota_warning", current_lang)
+        quota_msg = ui_translator.get_string("llm_service_warning", current_lang)
     st.warning(quota_msg, icon="⚠️")
 
 # =====================================================
@@ -73,9 +91,9 @@ if hasattr(secure_client, 'quota_exhausted') and secure_client.quota_exhausted:
 if current_lang == 'zh':
     drop_text = "将文件拖放至此处"
     browse_text = "浏览文件"
-elif current_lang == 'ms':
+elif current_lang == 'id':
     drop_text = "Seret dan lepaskan fail di sini"
-    browse_text = "Semak Fail"
+    browse_text = "Telusuri file"
 else:
     drop_text = "Drag and drop file here"
     browse_text = "Browse files"
@@ -99,7 +117,8 @@ st.markdown(f"""
             font-size: 0px !important;
             display: inline-block !important;
         }}
-        div[data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"]::after {{
+        div[data-testid="stFileUploaderDropzone"]
+        button[data-testid="stBaseButton-secondary"]::after {{
             content: "{safe_browse_text}";
             font-size: 14px !important;
             visibility: visible !important;
@@ -111,11 +130,44 @@ st.markdown(f"""
 upload_label = ui_translator.get_string("upload_section", current_lang)
 upload_help = ui_translator.get_string("upload_help", current_lang)
 
+
+def _clear_file_processing_state() -> None:
+    """Discard all per-file state when the upload changes or is removed.
+
+    Streamlit keeps ``session_state`` for the whole browser session.  Keeping
+    derived values after the source file changes can otherwise show one
+    learner's name, chart choices, or cached summary alongside another
+    learner's data.
+    """
+    for key in (
+        "processed_df",
+        "processed_metadata",
+        "processed_extracted_text",
+        "processed_ocr_info",
+        "manual_student_name",
+        "manual_student_name_input",
+        "previous_file_name",
+        "original_stats",
+        "current_plot_stats",
+        "current_x_axis",
+        "current_y_axis",
+        "last_axis_selection",
+        "x_axis_selector",
+        "y_axis_selector",
+        "chart_type_radio",
+        "summary_needs_update",
+        "llm_summary_cache",
+        "unstructured_llm_cache",
+        "unstructured_ocr_cache",
+    ):
+        st.session_state.pop(key, None)
+
+
 # FIX: Add an explicit stable key so Streamlit treats this as the same widget
 # across reruns regardless of the translated label text.  Without a key, the
 # widget's identity is derived from its label, meaning every language change
 # would create a brand-new widget that starts empty — uploading a file to
-# the "English" widget and then switching to Malay effectively loses it.
+# the "English" widget and then switching languages effectively loses it.
 uploaded_file = st.file_uploader(
     f"📁 {upload_label}",
     type=["csv", "xlsx", "xls", "pdf", "png", "jpg", "jpeg"],
@@ -130,11 +182,17 @@ uploaded_file = st.file_uploader(
 if "file_active" not in st.session_state:
     st.session_state["file_active"] = False
 
-language_changed = (st.session_state.get("previous_lang") != current_lang)
-st.session_state.previous_lang = current_lang
-
 # CASE 1: FILE IS PRESENT IN THE UPLOADER
 if uploaded_file is not None:
+    if uploaded_file.size > MAX_UPLOAD_BYTES:
+        st.error(
+            f"This file is larger than the configured "
+            f"{MAX_UPLOAD_BYTES // (1024 * 1024)} MB upload limit. "
+            "Choose a smaller file or ask an administrator to review the limit.",
+            icon="⚠️",
+        )
+        st.stop()
+
     file_name = uploaded_file.name.lower()
     file_bytes = uploaded_file.read()
     uploaded_file.seek(0)
@@ -155,14 +213,10 @@ if uploaded_file is not None:
             file_type=uploaded_file.type
         )
 
+        _clear_file_processing_state()
         st.session_state["cached_file_name"] = file_name
         st.session_state["cached_file_bytes"] = file_bytes
         st.session_state["cached_raw_uploader"] = uploaded_file
-
-        # Reset downstream states only for a genuinely new file
-        st.session_state["processed_df"] = None
-        st.session_state["processed_metadata"] = None
-        st.session_state["processed_extracted_text"] = None
 
     # Always keep the session marked as active and reset the null streak
     st.session_state["file_active"] = True
@@ -171,34 +225,20 @@ if uploaded_file is not None:
 # CASE 2: UPLOADER IS EMPTY
 else:
     if st.session_state.get("file_active", False):
-        if language_changed:
-            # A language change re-renders the page but the stable key above
-            # prevents the widget from losing state.  This branch is kept as
-            # an extra safety net for any edge case where it still fires.
-            st.session_state["_uploader_null_streak"] = 0
-        else:
-            # Count consecutive empty-uploader runs.  A single None can occur
-            # transiently during rapid reruns; two consecutive Nones reliably
-            # indicates the user clicked the ✕ button to remove the file.
-            streak = st.session_state.get("_uploader_null_streak", 0) + 1
-            st.session_state["_uploader_null_streak"] = streak
-
-            if streak >= 2:
-                st.session_state.pop("cached_file_name", None)
-                st.session_state.pop("cached_file_bytes", None)
-                st.session_state.pop("cached_raw_uploader", None)
-
-                st.session_state.pop("processed_df", None)
-                st.session_state.pop("processed_metadata", None)
-                st.session_state.pop("processed_extracted_text", None)
-
-                st.session_state["file_active"] = False
-                st.session_state["_uploader_null_streak"] = 0
-
-                st.rerun()
+        # The uploader has a stable key, so a language rerun retains its
+        # value.  A ``None`` therefore means the user removed the file and
+        # should clear sensitive, derived state immediately.
+        _clear_file_processing_state()
+        st.session_state.pop("cached_file_name", None)
+        st.session_state.pop("cached_file_bytes", None)
+        st.session_state.pop("cached_raw_uploader", None)
+        st.session_state["file_active"] = False
+        st.session_state["_uploader_null_streak"] = 0
 
 # STOP if nothing loaded
 if "cached_file_bytes" not in st.session_state:
+    st.info(ui_translator.get_string("no_file", current_lang), icon="📁")
+    st.caption("Supported formats: CSV, XLSX, XLS, PDF, PNG, JPG, and JPEG.")
     st.stop()
 
 # Rehydrate operational content payloads directly from session storage layers
@@ -212,7 +252,15 @@ df, metadata, extracted_text = process_uploaded_file(
 )
 
 # Handle unstructured files
-handle_unstructured_files(extracted_text, metadata, active_file_object, file_name, audit_logger, pii_protector, current_lang)
+handle_unstructured_files(
+    extracted_text,
+    metadata,
+    active_file_object,
+    file_name,
+    audit_logger,
+    pii_protector,
+    current_lang,
+)
 
 # Process structured data and generate analytics
 cleaned_df, stats, student_name, behaviour_traits, charts_images = process_structured_data(
@@ -221,15 +269,24 @@ cleaned_df, stats, student_name, behaviour_traits, charts_images = process_struc
 
 # Generate and download the final report
 generate_and_download_report(
-    stats, cleaned_df, metadata, student_name, extracted_text, behaviour_traits, charts_images, current_lang
+    stats,
+    cleaned_df,
+    metadata,
+    student_name,
+    extracted_text,
+    behaviour_traits,
+    charts_images,
+    current_lang,
 )
 
 # =====================================================
 # FOOTER
 # =====================================================
 st.markdown("---")
-footer_text = ui_translator.get_string("Educational Data Analytics Platform | Designed by Mahbub", current_lang)
+footer_text = ui_translator.get_string(
+    "Educational Data Analytics Platform | Designed by Mahbub", current_lang
+)
 st.markdown(
-    f"<div style='text-align:center;color:cyan'>{footer_text}</div>",
+    f"<div style='text-align:center;color:cyan'>{escape(str(footer_text), quote=True)}</div>",
     unsafe_allow_html=True
 )

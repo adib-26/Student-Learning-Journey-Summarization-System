@@ -10,15 +10,41 @@ from backend.api_storage import ApiDatabase
 from backend.api_utils import ApiError, error_response
 
 
+def _is_usable_secret(value) -> bool:
+    """Reject missing, placeholder, and trivially short signing secrets."""
+    if not isinstance(value, str):
+        return False
+    candidate = value.strip()
+    return len(candidate) >= 32 and not candidate.lower().startswith(("your_", "change_"))
+
+
 def create_app(config_override=None):
     app = Flask(__name__)
     app.config.from_object(Config)
     if config_override:
         app.config.update(config_override)
 
-    CORS(app, resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}})
+    if app.config.get("TESTING"):
+        # Tests need isolated signing keys but must never rely on production
+        # fallback credentials.
+        app.config["SECRET_KEY"] = app.config.get("SECRET_KEY") or "test-secret-key"
+        app.config["JWT_SECRET_KEY"] = app.config.get("JWT_SECRET_KEY") or "test-jwt-secret-key"
+    elif not (
+        _is_usable_secret(app.config.get("SECRET_KEY"))
+        and _is_usable_secret(app.config.get("JWT_SECRET_KEY"))
+    ):
+        raise RuntimeError(
+            "SECRET_KEY and JWT_SECRET_KEY must each be high-entropy values of at least 32 characters."
+        )
 
-    database = ApiDatabase(app.config["API_DATABASE_PATH"])
+    cors_origins = app.config.get("CORS_ORIGINS", [])
+    if cors_origins:
+        CORS(app, resources={r"/api/*": {"origins": cors_origins}})
+
+    database = ApiDatabase(
+        app.config["API_DATABASE_PATH"],
+        app.config["API_SQLITE_BUSY_TIMEOUT_MS"],
+    )
     database.initialize()
     app.extensions["api_db"] = database
 

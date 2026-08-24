@@ -5,12 +5,12 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-# Try to import the Gemini extraction helper from your backend.
+# Try to import the LLM extraction helper from your backend.
 # If it's not available, we fall back to expecting certificates passed directly.
 try:
-    from backend.text_info_extractor import _extract_certificate_data_with_gemini
+    from backend.text_info_extractor import _extract_certificate_data_with_llm
 except Exception:
-    _extract_certificate_data_with_gemini = None
+    _extract_certificate_data_with_llm = None
 
 
 # -----------------------------
@@ -61,12 +61,30 @@ def _parse_certificate_date_string(token: str) -> Optional[pd.Timestamp]:
         except Exception:
             pass
 
+    # Parse full numeric dates explicitly before asking pandas to infer a
+    # format.  This keeps the intended day/month ordering deterministic and
+    # avoids pandas' ambiguous-date warning in normal certificate data.
+    full_num_match = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", token_norm)
+    if full_num_match:
+        first, second, year = (int(part) for part in full_num_match.groups())
+        for day, month in ((first, second), (second, first)):
+            try:
+                return pd.Timestamp(year=year, month=month, day=day)
+            except ValueError:
+                continue
+
     # --- If token looks like dd/mm/yyyy or yyyy/mm/dd or similar, try pandas with heuristics ---
     # Try pandas parsing with a few heuristics
     for dayfirst in (False, True):
         for yearfirst in (False, True):
             try:
-                dt = pd.to_datetime(token_norm, dayfirst=dayfirst, yearfirst=yearfirst, errors="coerce")
+                dt = pd.to_datetime(
+                    token_norm,
+                    dayfirst=dayfirst,
+                    yearfirst=yearfirst,
+                    errors="coerce",
+                    format="mixed",
+                )
                 if pd.notna(dt):
                     return pd.Timestamp(dt.date())
             except Exception:
@@ -113,7 +131,7 @@ def _parse_certificate_date_string(token: str) -> Optional[pd.Timestamp]:
 
 def _build_dates_from_certificates(certificates: List[dict]) -> pd.DataFrame:
     """
-    Given a list of certificate dicts (from _extract_certificate_data_with_gemini),
+    Given a list of certificate dicts (from _extract_certificate_data_with_llm),
     extract and parse date fields into a DataFrame with columns:
       - certificate_name
       - raw_date
@@ -147,43 +165,150 @@ def _build_dates_from_certificates(certificates: List[dict]) -> pd.DataFrame:
 
 
 # -----------------------------
-# Streamlit visualization: Timeline chart (uses AI-extracted certificates)
+# Streamlit visualization helpers (use AI-extracted evidence)
+# -----------------------------
+def _render_figure(fig) -> List[bytes]:
+    """Render a Plotly figure and, when available, retain it for the PDF report."""
+    try:
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:
+        # Keep document analysis usable in non-Streamlit test and API contexts.
+        pass
+
+    try:
+        return [fig.to_image(format="png", width=1200, height=600, scale=2)]
+    except Exception:
+        # Static export depends on Kaleido/Chrome.  The interactive chart is
+        # still useful when image export is unavailable.
+        return []
+
+
+def _build_certificate_count_data(certificates: List[dict]) -> pd.DataFrame:
+    """Create an evidence-count chart source without inventing performance scores."""
+    labels = []
+    for certificate in certificates or []:
+        if not isinstance(certificate, dict):
+            continue
+        label = (
+            certificate.get("certificate_name")
+            or certificate.get("organization")
+            or ""
+        )
+        label = str(label).strip()
+        if label:
+            labels.append(label)
+
+    if not labels:
+        return pd.DataFrame(columns=["Certificate", "Count"])
+
+    return (
+        pd.DataFrame({"Certificate": labels})
+        .groupby("Certificate", as_index=False)
+        .size()
+        .rename(columns={"size": "Count"})
+        .sort_values(["Count", "Certificate"], ascending=[True, True])
+    )
+
+
+def visualize_documented_skills(skills: List[dict]) -> List[bytes]:
+    """Plot skills mentioned by the document when it contains no score evidence.
+
+    The unit value is deliberately a count of one per extracted skill, rather
+    than a made-up proficiency score.  This gives an unstructured document a
+    useful chart while preserving the distinction between documented skills and
+    assessed performance.
+    """
+    labels = []
+    seen = set()
+    for skill in skills or []:
+        if not isinstance(skill, dict):
+            continue
+        label = str(skill.get("Label") or "").strip()
+        key = label.casefold()
+        if label and key not in seen:
+            seen.add(key)
+            labels.append(label)
+
+    if not labels:
+        return []
+
+    skill_df = pd.DataFrame({"Skill": labels, "Documented": [1] * len(labels)})
+    st.subheader("🧩 Documented Skills")
+    st.caption("Skills explicitly identified in the document; these are not performance scores.")
+    fig = px.bar(
+        skill_df,
+        x="Documented",
+        y="Skill",
+        orientation="h",
+        text="Documented",
+        title="Documented Skills",
+        labels={"Documented": "Mentioned in document", "Skill": "Skill"},
+    )
+    fig.update_xaxes(tickvals=[1], ticktext=["Documented"])
+    fig.update_layout(showlegend=False, yaxis={"categoryorder": "total ascending"})
+    return _render_figure(fig)
+
+
+# -----------------------------
+# Certificate timeline (uses AI-extracted certificates)
 # -----------------------------
 def visualize_dates_from_ai(
     text_content: Optional[str] = None,
     certificates: Optional[List[dict]] = None,
     title: str = "Certificate Timeline"
-) -> None:
+) -> List[bytes]:
     """
     Render a timeline-style scatter of certificates.
     - If `certificates` is provided, it will be used directly.
     - Otherwise, if `text_content` is provided and the backend helper
-      `_extract_certificate_data_with_gemini` is available, it will call it
+      `_extract_certificate_data_with_llm` is available, it will call it
       to obtain certificates.
-    - No extra aggregated table or bar chart is shown; only a timeline visualization.
+    - Dated certificates render as a timeline; date-less certificates render
+      as an evidence-count chart instead of being dropped.
     """
-    # Prefer explicit certificates passed in
+    # An explicit list is the result from the current document-analysis pass.
+    # Do not re-query Qwen when it is empty: that would duplicate a slow local
+    # inference request on every Streamlit rerun.
     certs = certificates or []
-
-    # If no certificates passed, try to call backend extractor if available
-    if not certs:
-        if text_content and _extract_certificate_data_with_gemini:
+    if certificates is None and not certs:
+        if text_content and _extract_certificate_data_with_llm:
             try:
-                ai_out = _extract_certificate_data_with_gemini(text_content)
+                ai_out = _extract_certificate_data_with_llm(text_content)
                 certs = ai_out.get("certificates", []) if isinstance(ai_out, dict) else []
             except Exception as e:
                 st.error("Error calling backend extractor: " + str(e))
                 certs = []
         else:
             st.info("No certificate data provided and backend extractor not available.")
-            return
+            return []
+
+    if not certs:
+        return []
 
     # Build dates DataFrame from certificates
     dates_df = _build_dates_from_certificates(certs)
 
     if dates_df.empty:
-        st.info("No valid certificate dates found to visualize.")
-        return
+        # A certificate without a date is still useful evidence.  Use a count
+        # chart rather than silently rendering nothing or fabricating a score.
+        certificate_df = _build_certificate_count_data(certs)
+        if certificate_df.empty:
+            st.info("No chartable certificate evidence was found.")
+            return []
+
+        st.subheader("🎓 Certificate Evidence")
+        st.caption("Certificates identified in the document; no assessment score is implied.")
+        fig = px.bar(
+            certificate_df,
+            x="Count",
+            y="Certificate",
+            orientation="h",
+            text="Count",
+            title="Certificates Identified",
+            labels={"Count": "Certificates", "Certificate": "Certificate"},
+        )
+        fig.update_layout(showlegend=False, yaxis={"categoryorder": "total ascending"})
+        return _render_figure(fig)
 
     # Timeline scatter: x = date, y = certificate name (ordered by date)
     # Add a small index to preserve order for identical dates
@@ -208,7 +333,7 @@ def visualize_dates_from_ai(
     fig.update_layout(xaxis_title="Date", showlegend=False, margin=dict(l=20, r=20, t=50, b=20))
     fig.update_xaxes(tickformat="%b %Y")
 
-    st.plotly_chart(fig, use_container_width=True)
+    return _render_figure(fig)
 
 
 # -----------------------------
@@ -219,12 +344,12 @@ def visualize_text(
     *,
     certificates: Optional[List[dict]] = None,
     title: str = "Certificate Timeline"
-) -> None:
+) -> List[bytes]:
     """
     Backwards-compatible entry point named `visualize_text`.
     Delegates to visualize_dates_from_ai and shows a timeline only.
     """
-    visualize_dates_from_ai(text_content=text, certificates=certificates, title=title)
+    return visualize_dates_from_ai(text_content=text, certificates=certificates, title=title)
 
 
 # -----------------------------
@@ -233,9 +358,9 @@ def visualize_text(
 def analyze_and_visualize_dates_from_texts(
     texts: List[str],
     title: str = "Certificate Timeline"
-) -> None:
+) -> List[bytes]:
     """
     Merge multiple text sources and visualize using the backend extractor.
     """
     corpus = "\n\n".join(t for t in (texts or []) if t)
-    visualize_dates_from_ai(text_content=corpus, title=title)
+    return visualize_dates_from_ai(text_content=corpus, title=title)

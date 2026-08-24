@@ -1,6 +1,6 @@
 """
 Unit tests for deepl_translator.py
-Tests that all our quota warning translation strings exist and are accessible.
+Tests that local-LLM availability warning strings exist and are accessible.
 """
 import sys
 import os
@@ -18,41 +18,41 @@ class TestDeepLTranslator:
         """Create a translator instance before each test"""
         self.translator = DeepLUITranslator()
 
-    def test_quota_warning_strings_exist(self):
-        """Test that all our quota warning translation strings are properly added to UI_STRINGS"""
+    def test_llm_service_warning_strings_exist(self):
+        """All local-LLM availability strings are properly added to UI_STRINGS."""
         # Verify all English strings exist
-        assert "gemini_quota_warning" in UI_STRINGS
-        assert UI_STRINGS["gemini_quota_warning"] == "⚠️ Sorry, our AI summary service is temporarily unavailable"
+        assert "llm_service_warning" in UI_STRINGS
+        assert UI_STRINGS["llm_service_warning"] == "⚠️ Sorry, our local AI summary service is temporarily unavailable"
         
-        # Verify Malay translation exists
-        assert "gemini_quota_warning_ms" in UI_STRINGS
-        assert UI_STRINGS["gemini_quota_warning_ms"] == "⚠️ Maaf, perkhidmatan ringkasan AI kami tidak tersedia buat sementara waktu"
+        # Verify Indonesian translation exists
+        assert "llm_service_warning_id" in UI_STRINGS
+        assert UI_STRINGS["llm_service_warning_id"] == "⚠️ Maaf, layanan ringkasan AI lokal kami sementara tidak tersedia"
         
         # Verify Chinese translation exists
-        assert "gemini_quota_warning_zh" in UI_STRINGS
-        assert UI_STRINGS["gemini_quota_warning_zh"] == "⚠️ 抱歉，我们的AI摘要服务暂时无法使用"
+        assert "llm_service_warning_zh" in UI_STRINGS
+        assert UI_STRINGS["llm_service_warning_zh"] == "⚠️ 抱歉，我们的本地AI摘要服务暂时无法使用"
 
     @patch('streamlit.session_state', {'language': 'en'})
-    def test_get_string_returns_correct_quota_warnings_english(self):
-        """Test that get_string returns the correct English quota warning"""
-        result = self.translator.get_string("gemini_quota_warning")
-        assert result == "⚠️ Sorry, our AI summary service is temporarily unavailable"
+    def test_get_string_returns_correct_llm_warning_english(self):
+        """Test that get_string returns the correct English local-LLM warning."""
+        result = self.translator.get_string("llm_service_warning")
+        assert result == "⚠️ Sorry, our local AI summary service is temporarily unavailable"
 
-    @patch('streamlit.session_state', {'language': 'ms'})
-    def test_get_string_returns_correct_quota_warnings_malay(self):
-        """Test that the Malay quota warning string exists and can be retrieved"""
-        # Access the Malay string directly from UI_STRINGS since DeepL is offline
-        result = UI_STRINGS["gemini_quota_warning_ms"]
-        assert result == "⚠️ Maaf, perkhidmatan ringkasan AI kami tidak tersedia buat sementara waktu"
+    @patch('streamlit.session_state', {'language': 'id'})
+    def test_get_string_returns_correct_llm_warning_indonesian(self):
+        """Test that the Indonesian local-LLM warning string exists and can be retrieved."""
+        # Access the Indonesian string directly from UI_STRINGS since DeepL is offline
+        result = UI_STRINGS["llm_service_warning_id"]
+        assert result == "⚠️ Maaf, layanan ringkasan AI lokal kami sementara tidak tersedia"
 
     @patch('streamlit.session_state', {'language': 'zh'})
-    def test_get_string_returns_correct_quota_warnings_chinese(self):
-        """Test that the Chinese quota warning string exists and can be retrieved"""
+    def test_get_string_returns_correct_llm_warning_chinese(self):
+        """Test that the Chinese local-LLM warning string exists and can be retrieved."""
         # Access the Chinese string directly from UI_STRINGS since DeepL is offline
-        result = UI_STRINGS["gemini_quota_warning_zh"]
-        assert result == "⚠️ 抱歉，我们的AI摘要服务暂时无法使用"
+        result = UI_STRINGS["llm_service_warning_zh"]
+        assert result == "⚠️ 抱歉，我们的本地AI摘要服务暂时无法使用"
 
-    def test_quota_warning_key_not_found_fallback(self):
+    def test_llm_warning_key_not_found_fallback(self):
         """Test that if a translation key is missing, it falls back gracefully"""
         # Test with a non-existent key
         result = self.translator.get_string("non_existent_key")
@@ -63,11 +63,11 @@ class TestDeepLTranslator:
         for key, value in UI_STRINGS.items():
             assert isinstance(value, str), f"UI_STRINGS['{key}'] is not a string, it's {type(value)}"
 
-    def test_quota_warnings_include_warning_icon(self):
-        """Verify all quota warnings include the ⚠️ icon"""
-        assert "⚠️" in UI_STRINGS["gemini_quota_warning"]
-        assert "⚠️" in UI_STRINGS["gemini_quota_warning_ms"]
-        assert "⚠️" in UI_STRINGS["gemini_quota_warning_zh"]
+    def test_llm_warnings_include_warning_icon(self):
+        """Verify all local-LLM warnings include the ⚠️ icon."""
+        assert "⚠️" in UI_STRINGS["llm_service_warning"]
+        assert "⚠️" in UI_STRINGS["llm_service_warning_id"]
+        assert "⚠️" in UI_STRINGS["llm_service_warning_zh"]
 
 
 if __name__ == "__main__":

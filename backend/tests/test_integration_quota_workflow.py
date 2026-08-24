@@ -1,130 +1,127 @@
 """
-Integration test for the complete quota exhaustion workflow
-Tests that all components work together: Gemini client catches 429 → sets quota_exhausted flag → displays correct warning.
-This is an integration test, not a unit test - it verifies real application components interact properly.
+Integration test for the complete service-unavailability workflow.
+Tests that real application components work together: the LLM client catches a
+connection failure to the local vLLM server → opens the shared circuit breaker
+→ displays the correct warning → fails fast on subsequent calls.
+This is an integration test, not a unit test - only the external HTTP boundary
+(the OpenAI SDK transport) is mocked.
 """
 import sys
 import os
 # Add project root to path so we can import backend modules properly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+import httpx
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import streamlit as st
-from backend.secure_gemini_client import SecureGeminiClient
+from openai import APIConnectionError
+from backend.llm_client import SecureLLMClient, SERVICE_UNAVAILABLE_MSG
 from backend.deepl_translator import DeepLUITranslator, UI_STRINGS
 
 
-class TestQuotaWarningIntegration:
-    """Integration test suite for the complete quota warning system"""
+def _connection_error() -> APIConnectionError:
+    return APIConnectionError(
+        request=httpx.Request("POST", "http://localhost:8000/v1/chat/completions")
+    )
+
+
+class TestServiceUnavailableIntegration:
+    """Integration test suite for the complete AI-unavailable warning system"""
 
     def setup_method(self):
         """Setup test environment before each test"""
         st.session_state.clear()
+        SecureLLMClient.reset_circuit_breaker()
 
-    @patch('os.getenv')
     @patch('streamlit.warning')
-    @patch('google.generativeai.configure')
-    @patch('google.generativeai.GenerativeModel')
-    def test_complete_quota_exhaustion_workflow(
-        self, mock_genai_model, mock_configure, mock_st_warning, mock_getenv
-    ):
-        """Test the ENTIRE workflow: 429 error → client flags quota → warning displays with correct translation"""
+    @patch('backend.llm_client.OpenAI')
+    def test_complete_service_unavailable_workflow(self, mock_openai, mock_st_warning):
+        """Test the ENTIRE workflow: connection failure → breaker opens → warning displays with correct translation"""
         # 1. Setup mocks for external dependencies only (never mock your own code!)
-        mock_getenv.return_value = "test_api_key"
-        mock_model_instance = MagicMock()
-        # Simulate Gemini API returning 429 RESOURCE_EXHAUSTED
-        from google.api_core.exceptions import ResourceExhausted
-        mock_model_instance.generate_content.side_effect = ResourceExhausted("Quota exceeded")
-        mock_genai_model.return_value = mock_model_instance
+        instance = mock_openai.return_value
+        # Simulate the local vLLM server being down / unreachable
+        instance.chat.completions.create.side_effect = _connection_error()
 
         # 2. Initialize REAL application components (your actual code - not mocked!)
         st.session_state['language'] = 'en'
-        client = SecureGeminiClient()
+        client = SecureLLMClient()
         translator = DeepLUITranslator()
 
         # 3. Verify initial state is correct
-        assert client.quota_exhausted is False
+        assert client.service_unavailable is False
 
-        # 4. First API call - should catch the 429 and set the quota flag
-        client.call_gemini_secure("Test document content to summarize")
+        # 4. First call - should catch the connection error and open the breaker
+        client.call_llm_secure("Test document content to summarize")
 
-        # 5. Verify quota flag was set to prevent repeated API calls
-        assert client.quota_exhausted is True
+        # 5. Verify the breaker opened to prevent repeated slow failures
+        assert client.service_unavailable is True
 
-        # 6. Verify the correct English warning string exists in UI_STRINGS
-        assert UI_STRINGS["gemini_quota_warning"] == "⚠️ Sorry, our AI summary service is temporarily unavailable"
-        warning_message = translator.get_string("gemini_quota_warning")
-        assert warning_message == UI_STRINGS["gemini_quota_warning"]
+        # 6. Verify the exact user-facing warning was displayed
+        mock_st_warning.assert_called_once_with(SERVICE_UNAVAILABLE_MSG, icon="⚠️")
 
-        # 7. Verify subsequent calls fail FAST - no additional API calls are made!
-        mock_model_instance.generate_content.reset_mock()
-        result = client.call_gemini_secure("Another test document - this should NEVER hit the API")
+        # 7. Verify the correct English warning string exists in UI_STRINGS
+        assert UI_STRINGS["llm_service_warning"] == SERVICE_UNAVAILABLE_MSG
+        warning_message = translator.get_string("llm_service_warning")
+        assert warning_message == UI_STRINGS["llm_service_warning"]
+
+        # 8. Verify subsequent calls fail FAST - no additional server calls are made!
+        instance.chat.completions.create.reset_mock()
+        result = client.call_llm_secure("Another test document - this should NEVER hit the server")
         assert result is None  # Fast fail returns None immediately
-        mock_model_instance.generate_content.assert_not_called()  # ✓ Critical: No repeated API calls!
+        instance.chat.completions.create.assert_not_called()  # ✓ Critical: No repeated calls!
 
-    @patch('os.getenv')
-    @patch('google.generativeai.configure')
-    def test_multi_language_strings_exist_in_integration(
-        self, mock_configure, mock_getenv
-    ):
+    def test_multi_language_strings_exist_in_integration(self):
         """Test that all multi-language translations exist in the integrated UI_STRINGS"""
-        mock_getenv.return_value = "test_api_key"
-        
         # Verify ALL translation strings exist and are correct (direct from shared UI_STRINGS)
         # English
-        assert UI_STRINGS["gemini_quota_warning"] == "⚠️ Sorry, our AI summary service is temporarily unavailable"
-        # Bahasa Melayu (Malay)
-        assert UI_STRINGS["gemini_quota_warning_ms"] == "⚠️ Maaf, perkhidmatan ringkasan AI kami tidak tersedia buat sementara waktu"
-        # Traditional Chinese
-        assert UI_STRINGS["gemini_quota_warning_zh"] == "⚠️ 抱歉，我们的AI摘要服务暂时无法使用"
+        assert UI_STRINGS["llm_service_warning"] == "⚠️ Sorry, our local AI summary service is temporarily unavailable"
+        # Bahasa Indonesia
+        assert UI_STRINGS["llm_service_warning_id"] == "⚠️ Maaf, layanan ringkasan AI lokal kami sementara tidak tersedia"
+        # Chinese
+        assert UI_STRINGS["llm_service_warning_zh"] == "⚠️ 抱歉，我们的本地AI摘要服务暂时无法使用"
 
         # Initialize translator and verify get_string retrieves correct strings per language
         translator = DeepLUITranslator()
         # For English, it returns the original string
-        english_warning = translator.get_string("gemini_quota_warning", language='en')
-        assert english_warning == UI_STRINGS["gemini_quota_warning"]
-        
+        english_warning = translator.get_string("llm_service_warning", language='en')
+        assert english_warning == UI_STRINGS["llm_service_warning"]
+
         # For other languages, since DeepL might be offline in test environment, it should return the original string
         # or we can verify that the translation strings exist in UI_STRINGS
-        malay_warning = UI_STRINGS["gemini_quota_warning_ms"]
-        assert malay_warning == "⚠️ Maaf, perkhidmatan ringkasan AI kami tidak tersedia buat sementara waktu"
-        
-        chinese_warning = UI_STRINGS["gemini_quota_warning_zh"]
-        assert chinese_warning == "⚠️ 抱歉，我们的AI摘要服务暂时无法使用"
+        indonesian_warning = UI_STRINGS["llm_service_warning_id"]
+        assert indonesian_warning == "⚠️ Maaf, layanan ringkasan AI lokal kami sementara tidak tersedia"
 
-    @patch('os.getenv')
+        chinese_warning = UI_STRINGS["llm_service_warning_zh"]
+        assert chinese_warning == "⚠️ 抱歉，我们的本地AI摘要服务暂时无法使用"
+
     @patch('streamlit.warning')
-    @patch('google.generativeai.configure')
-    @patch('google.generativeai.GenerativeModel')
-    def test_quota_flag_persists_across_calls(
-        self, mock_genai_model, mock_configure, mock_st_warning, mock_getenv
-    ):
-        """Test that the quota_exhausted flag persists and continues to block API calls"""
-        # Setup mocks
-        mock_getenv.return_value = "test_api_key"
-        mock_model_instance = MagicMock()
-        from google.api_core.exceptions import ResourceExhausted
-        mock_model_instance.generate_content.side_effect = ResourceExhausted("Quota exceeded")
-        mock_genai_model.return_value = mock_model_instance
+    @patch('backend.llm_client.OpenAI')
+    def test_breaker_persists_across_calls_and_instances(self, mock_openai, mock_st_warning):
+        """Test that the open breaker persists and continues to block calls, even from other client instances"""
+        instance = mock_openai.return_value
+        instance.chat.completions.create.side_effect = _connection_error()
 
         # Initialize REAL client with session_state
         st.session_state['language'] = 'en'
-        client = SecureGeminiClient()
-        
-        # First call triggers quota exhaustion
-        client.call_gemini_secure("First call - triggers 429")
-        
-        # Verify flag is True
-        assert client.quota_exhausted is True
-        
-        # Call 10 more times - none should ever call the API
-        mock_model_instance.generate_content.reset_mock()
+        client = SecureLLMClient()
+
+        # First call opens the breaker
+        client.call_llm_secure("First call - server is down")
+        assert client.service_unavailable is True
+
+        # Call 10 more times - none should ever hit the server
+        instance.chat.completions.create.reset_mock()
         for i in range(10):
-            result = client.call_gemini_secure(f"Additional call {i}")
+            result = client.call_llm_secure(f"Additional call {i}")
             assert result is None
-        
-        # Verify API was never called again - only called ONCE initially!
-        mock_model_instance.generate_content.assert_not_called()
+
+        # A brand-new client instance (e.g. another module) is also blocked
+        second_client = SecureLLMClient()
+        assert second_client.service_unavailable is True
+        assert second_client.call_llm_secure("From another module") is None
+
+        # Verify the server was never called again - only called ONCE initially!
+        instance.chat.completions.create.assert_not_called()
 
 
 if __name__ == "__main__":

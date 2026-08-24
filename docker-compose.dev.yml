@@ -1,0 +1,12 @@
+# Development-only override. It deliberately bind-mounts source code so edits
+# are reflected in the running container; use it together with the base file.
+services:
+  streamlit-app:
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    volumes:
+      - .:/app
+      # Replace the base named volumes with host-owned development state so
+      # the UID/GID above can write audit, cache, and SQLite files on Linux.
+      - ./logs:/app/logs
+      - ./backend/logs:/app/backend/logs
+      - ./data:/app/data

@@ -1,0 +1,40 @@
+# Keep credentials, personal student data, and local runtime state out of
+# container build contexts. Runtime configuration is supplied with environment
+# variables or Docker secrets instead.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+secrets.toml
+.streamlit/secrets.toml
+
+# Development environments and generated artifacts
+.venv
+venv
+env
+venv-python*
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+build
+dist
+*.egg-info
+*.log
+*.pkl
+*.save
+
+# Local PII-bearing or machine-specific runtime state
+data/*.sqlite3
+data/*.sqlite3-*
+logs
+backend/logs
+
+# IDE and platform files
+.idea
+.vscode
+.DS_Store

@@ -2,6 +2,7 @@
 import io
 import os
 import textwrap
+from xml.sax.saxutils import escape as xml_escape
 import pandas as pd
 import streamlit as st
 from typing import Optional, Sequence, Any
@@ -25,13 +26,9 @@ try:
         Table,
         TableStyle,
         Image as RLImage,
-        PageBreak,
     )
 
-
     # --- UNICODE FONT REGISTRATION SYSTEM ---
-
-
     CHOSEN_FONT = "Helvetica"
 
     try:
@@ -104,6 +101,11 @@ def _safe_text(value: Any) -> str:
     return str(value)
 
 
+def _paragraph_text(value: Any) -> str:
+    """Escape dynamic text before ReportLab parses its XML-like markup."""
+    return xml_escape(_safe_text(value))
+
+
 def _truncate_text(text: str, max_chars: int = 8000) -> str:
     if not text:
         return ""
@@ -167,7 +169,10 @@ def create_report(stats_dict: dict, summary_text: str, language: str = 'en') -> 
         'Report Generated On'
     ]
 
-    labels = {key: translator.translate_text(key, language) for key in label_keys}
+    labels = {
+        key: translator.translate_text(key, language, cacheable=True)
+        for key in label_keys
+    }
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=18 * mm, leftMargin=18 * mm, topMargin=18 * mm,
@@ -179,7 +184,7 @@ def create_report(stats_dict: dict, summary_text: str, language: str = 'en') -> 
         'Title', parent=styles['Heading1'], fontName=CHOSEN_FONT, fontSize=18, textColor=colors.HexColor('#1B7F4E'),
         alignment=1
     )
-    story.append(Paragraph(labels.get('Student Learning Journey Summary', 'Report'), title_style))
+    story.append(Paragraph(_paragraph_text(labels.get('Student Learning Journey Summary', 'Report')), title_style))
     story.append(Spacer(1, 15))
 
     avg_val = stats_dict.get('average', stats_dict.get('averages', {}).get('Score', 'N/A'))
@@ -208,17 +213,17 @@ def create_report(stats_dict: dict, summary_text: str, language: str = 'en') -> 
     header_style = ParagraphStyle(
         'Header', parent=styles['Heading2'], fontName=CHOSEN_FONT, fontSize=14, textColor=colors.HexColor('#1B7F4E')
     )
-    story.append(Paragraph(labels.get('Analysis Summary', 'Analysis Summary'), header_style))
+    story.append(Paragraph(_paragraph_text(labels.get('Analysis Summary', 'Analysis Summary')), header_style))
     story.append(Spacer(1, 8))
 
     body_style = ParagraphStyle('Body', parent=styles['Normal'], fontName=CHOSEN_FONT, fontSize=11, leading=14)
-    story.append(Paragraph(summary_text if summary_text else "", body_style))
+    story.append(Paragraph(_paragraph_text(summary_text), body_style))
     story.append(Spacer(1, 15))
 
     footer_text = f"{labels.get('Report Generated On', 'Generated On')}: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontName=CHOSEN_FONT, fontSize=9,
                                   textColor=colors.grey, alignment=1)
-    story.append(Paragraph(footer_text, footer_style))
+    story.append(Paragraph(_paragraph_text(footer_text), footer_style))
 
     doc.build(story)
     buffer.seek(0)
@@ -265,7 +270,8 @@ def get_report_bytes(
         )
         # Translate column names ('Label', 'Score') to match UI execution structure
         top5_df.columns = [
-            translator.translate_text(col, current_lang) for col in top5_df.columns
+            translator.translate_text(col, current_lang, cacheable=True)
+            for col in top5_df.columns
         ]
 
     if REPORTLAB_AVAILABLE:
@@ -312,10 +318,20 @@ def get_report_bytes(
         story = []
 
         report_title_label = ui_translator.get_string("Student Learning Journey Summary", current_lang)
-        story.append(Paragraph(f"{report_title_label} — {_safe_text(student_name)}", heading))
+        story.append(
+            Paragraph(
+                f"{_paragraph_text(report_title_label)} — {_paragraph_text(student_name)}",
+                heading,
+            )
+        )
         story.append(Spacer(1, 6))
 
-        story.append(Paragraph(f"<b>{ui_translator.get_string('Key Metrics', current_lang)}</b>", small_bold))
+        story.append(
+            Paragraph(
+                f"<b>{_paragraph_text(ui_translator.get_string('Key Metrics', current_lang))}</b>",
+                small_bold,
+            )
+        )
         metrics = [
             [ui_translator.get_string("Average Score", current_lang), _safe_text(avg_score)],
             [ui_translator.get_string("Highest Score", current_lang), _safe_text(highest_score)],
@@ -343,22 +359,41 @@ def get_report_bytes(
         story.append(Spacer(1, 10))
 
         if behaviour_traits:
-            story.append(Paragraph(f"<b>{ui_translator.get_string('Behaviour Traits', current_lang)}</b>", small_bold))
+            story.append(
+                Paragraph(
+                    f"<b>{_paragraph_text(ui_translator.get_string('Behaviour Traits', current_lang))}</b>",
+                    small_bold,
+                )
+            )
             for b in behaviour_traits:
                 if isinstance(b, dict):
                     trait = b.get("trait") or b.get("name") or ""
                     evidence = b.get("evidence") or b.get("note") or ""
-                    story.append(Paragraph(f"<b>{_safe_text(trait)}</b>: {_safe_text(evidence)}", normal))
+                    story.append(
+                        Paragraph(
+                            f"<b>{_paragraph_text(trait)}</b>: {_paragraph_text(evidence)}",
+                            normal,
+                        )
+                    )
                 else:
-                    story.append(Paragraph(_safe_text(b), normal))
+                    story.append(Paragraph(_paragraph_text(b), normal))
             story.append(Spacer(1, 10))
 
-        story.append(Paragraph(f"<b>{ui_translator.get_string('🎓 Top 5 Grades', current_lang)}</b>", small_bold))
+        story.append(
+            Paragraph(
+                f"<b>{_paragraph_text(ui_translator.get_string('🎓 Top 5 Grades', current_lang))}</b>",
+                small_bold,
+            )
+        )
         table_data = _prepare_table_data(top5_df, max_rows=5)
 
         if table_data and len(table_data) == 1 and table_data[0][0] == "No tabular data available.":
             story.append(
-                Paragraph(ui_translator.get_string("No specific certificate details found.", current_lang), normal))
+                Paragraph(
+                    _paragraph_text(ui_translator.get_string("No specific certificate details found.", current_lang)),
+                    normal,
+                )
+            )
         else:
             col_count = len(table_data[0])
             col_width = (170 * mm) / max(col_count, 1)
@@ -395,10 +430,13 @@ def get_report_bytes(
 
         if final_summary:
             story.append(
-                Paragraph(f"<b>{ui_translator.get_string('📝 Professional Executive Summary', current_lang)}</b>",
-                          small_bold))
+                Paragraph(
+                    f"<b>{_paragraph_text(ui_translator.get_string('📝 Professional Executive Summary', current_lang))}</b>",
+                    small_bold,
+                )
+            )
             for chunk in textwrap.wrap(_truncate_text(final_summary, max_chars=8000), 1000):
-                story.append(Paragraph(chunk, normal))
+                story.append(Paragraph(_paragraph_text(chunk), normal))
             story.append(Spacer(1, 6))
 
         doc.build(story)
@@ -427,6 +465,8 @@ def create_download_button(
     if not REPORTLAB_AVAILABLE and filename.lower().endswith(".pdf"):
         filename = filename.rsplit(".", 1)[0] + ".txt"
         mime = "text/plain"
+        label = "⬇️ Download Report as Text"
+        st.warning("PDF export is unavailable, so this download is provided as plain text.", icon="⚠️")
 
     st.download_button(
         label=label,

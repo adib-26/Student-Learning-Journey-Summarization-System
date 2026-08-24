@@ -117,6 +117,7 @@ def compute_statistics(
 
     valid_subjects = []
     valid_scores = {}
+    subject_score_samples: Dict[str, list[float]] = {}
 
     # Column‑based approach (subjects as column headers)
     selected_suffix = None
@@ -151,6 +152,7 @@ def compute_statistics(
             avg_score = scores.mean()
             valid_subjects.append(col_name)
             valid_scores[col_name] = avg_score
+            subject_score_samples[col_name] = [float(avg_score)]
 
     # Row‑based approach – filtered to academic subjects only, plus exclude 'club'
     if eff_label_col and eff_score_col:
@@ -158,6 +160,7 @@ def compute_statistics(
         if x_col and y_col:
             valid_subjects = []
             valid_scores = {}
+            subject_score_samples = {}
 
         work_df = df.copy()
         work_df[eff_score_col] = pd.to_numeric(work_df[eff_score_col], errors="coerce")
@@ -212,6 +215,7 @@ def compute_statistics(
             if matched:
                 valid_subjects.append(matched)
                 valid_scores[matched] = score
+                subject_score_samples.setdefault(matched, []).append(float(score))
                 continue
 
             # Fallback: last word if it looks like a subject
@@ -223,14 +227,14 @@ def compute_statistics(
                 if not re.search(r'\bclub\b', last_word, re.IGNORECASE):
                     valid_subjects.append(last_word)
                     valid_scores[last_word] = score
+                    subject_score_samples.setdefault(last_word, []).append(float(score))
 
     # Average scores if duplicate subjects appear
-    temp_scores = {}
-    for subj, score in zip(valid_subjects, [valid_scores[s] for s in valid_subjects]):
-        if subj not in temp_scores:
-            temp_scores[subj] = []
-        temp_scores[subj].append(score)
-    final_scores = {subj: sum(scores) / len(scores) for subj, scores in temp_scores.items()}
+    final_scores = {
+        subject: sum(scores) / len(scores)
+        for subject, scores in subject_score_samples.items()
+        if scores
+    }
     final_subjects = list(final_scores.keys())
 
     stats["subjects"] = final_subjects

@@ -31,9 +31,9 @@ def sanitize_and_set_student_name(student_info: Dict[str, str], name: str):
     if cleaned_name and cleaned_name.lower() not in FORBIDDEN_LABELS_LOWER:
         student_info["Student Name"] = cleaned_name
         student_info["student_name"] = cleaned_name
-        print(f"[DEBUG] ✅ Name set to: '{cleaned_name}'")
+        logger.debug("Accepted a student-name candidate")
     else:
-        print(f"[DEBUG] ❌ Rejected name candidate: '{cleaned_name}'")
+        logger.debug("Rejected a student-name candidate")
 
 
 def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
@@ -56,7 +56,7 @@ def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
         new_columns = df.iloc[0]
         df = df.iloc[1:].reset_index(drop=True)
         df.columns = new_columns
-        print("[DEBUG] Promoted first row to column headers")
+        logger.debug("Promoted the first row to column headers")
 
     # ------------------------------------------------------------------
     # Method 1: Direct Label / Value columns (most reliable)
@@ -71,7 +71,7 @@ def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
             value_col = col
 
     if label_col is not None and value_col is not None:
-        print("[DEBUG] Using Label/Value column extraction")
+        logger.debug("Using label/value column extraction")
         # Iterate through all rows
         for idx, row in df.iterrows():
             label = str(row[label_col]).strip().lower() if pd.notna(row[label_col]) else ""
@@ -80,7 +80,7 @@ def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
             if not value or value.lower() in FORBIDDEN_LABELS_LOWER:
                 continue
 
-            print(f"[DEBUG] Processing: label='{label}' -> value='{value}'")
+            logger.debug("Processing a label/value metadata row")
 
             # Name
             if label in {"student name", "student_name", "name", "full name"}:
@@ -95,7 +95,7 @@ def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
                     student_info["Gender"] = "Female"
                 else:
                     student_info["Gender"] = gender_val.capitalize()
-                print(f"[DEBUG] ✅ Gender set to: {student_info['Gender']}")
+                logger.debug("Accepted student gender metadata")
 
             # Other fields
             elif label in {"nationality", "citizenship"}:
@@ -117,7 +117,7 @@ def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
     # Method 2: Two-row structure with forward-filled sections
     # (Handles files where "Section" column is not repeated for every row)
     # ------------------------------------------------------------------
-    print("[DEBUG] Trying two-row structure extraction (ffill)")
+    logger.debug("Trying forward-filled two-row metadata extraction")
     # Make a copy and forward fill the Section column
     df_filled = df.copy()
     if "Section" in df_filled.columns or df_filled.columns[0] == "Section":
@@ -137,7 +137,7 @@ def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
             if len(df.columns) >= 3:
                 label_col = df.columns[1]
                 value_col = df.columns[2]
-                print(f"[DEBUG] Using positional columns: label='{label_col}', value='{value_col}'")
+                logger.debug("Using positional columns for metadata extraction")
 
         if label_col is not None and value_col is not None:
             for idx, row in student_rows.iterrows():
@@ -147,7 +147,7 @@ def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
                 if not value or value.lower() in FORBIDDEN_LABELS_LOWER:
                     continue
 
-                print(f"[DEBUG] (ffill) Processing: label='{label}' -> value='{value}'")
+                logger.debug("Processing a forward-filled metadata row")
 
                 if label in {"student name", "student_name", "name", "full name"}:
                     sanitize_and_set_student_name(student_info, value)
@@ -159,7 +159,7 @@ def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
                         student_info["Gender"] = "Female"
                     else:
                         student_info["Gender"] = gender_val.capitalize()
-                    print(f"[DEBUG] ✅ Gender (ffill) set to: {student_info['Gender']}")
+                    logger.debug("Accepted forward-filled student gender metadata")
                 elif label in {"nationality", "citizenship"}:
                     student_info["Nationality"] = value
                 elif label in {"school level", "level"}:
@@ -179,7 +179,7 @@ def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
     # Only run if we're missing essential fields
     # ------------------------------------------------------------------
     if not student_info.get("Student Name") or not student_info.get("Gender"):
-        print("[DEBUG] Falling back to adjacent-cell scan for missing fields")
+        logger.debug("Falling back to adjacent-cell metadata scanning")
         for _, row in df.iterrows():
             row_vals = [str(v).strip() if pd.notna(v) else "" for v in row.values]
             for i, cell in enumerate(row_vals):
@@ -201,7 +201,7 @@ def extract_student_info_from_dataframe(df: pd.DataFrame) -> Dict[str, str]:
                                     student_info["Gender"] = "Female"
                                 else:
                                     student_info["Gender"] = candidate.capitalize()
-                                print(f"[DEBUG] ✅ Gender from scan: {student_info['Gender']}")
+                                logger.debug("Accepted student gender from adjacent-cell scan")
                             break
                     # Early exit if we have both essential fields
                     if student_info.get("Student Name") and student_info.get("Gender"):
@@ -241,17 +241,17 @@ def normalize_input(df, metadata):
     if isinstance(df, dict):
         for v in df.values():
             if isinstance(v, pd.DataFrame):
-                print("[DEBUG] Unwrapping sheet dict -> first DataFrame")
+                logger.debug("Unwrapped the first worksheet DataFrame")
                 return v, None
     # Case 2: metadata contains a DataFrame and df is None
     if df is None and isinstance(metadata, dict):
         for v in metadata.values():
             if isinstance(v, pd.DataFrame):
-                print("[DEBUG] Swapping: metadata holds DataFrame, using it as df")
+                logger.debug("Using a DataFrame found in metadata")
                 return v, None
     # Case 3: metadata is useless
     if is_useless_metadata_dict(metadata):
-        print("[DEBUG] Ignoring useless metadata dict")
+        logger.debug("Ignoring unusable metadata")
         metadata = None
     return df, metadata
 
@@ -266,7 +266,7 @@ def get_student_info(df: Optional[pd.DataFrame] = None,
 
     # Priority 1: Genuine metadata (key‑value, no DataFrames)
     if metadata and isinstance(metadata, dict) and not any(isinstance(v, pd.DataFrame) for v in metadata.values()):
-        print("[DEBUG] Processing metadata path")
+        logger.debug("Processing metadata input")
         for k, v in metadata.items():
             if k and v is not None and not isinstance(v, pd.DataFrame):
                 k_str, v_str = str(k).strip(), str(v).strip()
@@ -279,7 +279,7 @@ def get_student_info(df: Optional[pd.DataFrame] = None,
 
     # Priority 2: DataFrame
     if df is not None and not df.empty:
-        print("[DEBUG] Processing DataFrame path")
+        logger.debug("Processing DataFrame input")
         student_info = extract_student_info_from_dataframe(df)
 
         # If important fields are missing, try regex text fallback to supplement
@@ -295,20 +295,20 @@ def get_student_info(df: Optional[pd.DataFrame] = None,
                 # Check for Gender (always check if missing, even if name is found)
                 if "Gender" not in student_info and "Gender" in txt_info:
                     student_info["Gender"] = txt_info["Gender"]
-                    print(f"[DEBUG] Gender from text fallback: {student_info['Gender']}")
+                    logger.debug("Accepted student gender from text fallback")
 
                 # Merge missing items extracted from text
                 for k, v in txt_info.items():
                     if k not in student_info and k not in ("Student Name", "student_name"):
                         student_info[k] = v
-            except Exception as e:
-                print(f"[DEBUG] Text fallback error: {e}")
+            except Exception:
+                logger.debug("Student metadata text fallback failed", exc_info=True)
 
         return student_info
 
     # Priority 3: Plain text
     if text:
-        print("[DEBUG] Processing plain text path")
+        logger.debug("Processing plain-text metadata input")
         student_info = extract_student_info_from_text(text)
 
     return student_info
@@ -326,7 +326,7 @@ def extract_student_info_from_text(text: str) -> Dict[str, str]:
         if not line:
             continue
 
-        print(f"[DEBUG] Text line: {line}")
+        logger.debug("Inspecting a plain-text metadata line")
 
         # Name Regex
         m = re.search(r"(?:Student\s+Name|StudentName|Name)\s*[:\-]?\s*([A-Za-z][A-Za-z\s'\-]{1,58}?)(?=\s{2,}|\s*$)", line, re.IGNORECASE)
@@ -345,7 +345,7 @@ def extract_student_info_from_text(text: str) -> Dict[str, str]:
                 student_info['Gender'] = 'Female'
             elif gender_val.lower() not in FORBIDDEN_LABELS_LOWER:
                 student_info['Gender'] = gender_val.capitalize()
-            print(f"[DEBUG] Gender from text: {student_info['Gender']}")
+            logger.debug("Accepted student gender from text")
 
         # Additional Fallback Fields
         nat_match = re.search(r"\bNationality\s*[:\-,\t]*\s*([A-Za-z][A-Za-z\s'\-]{1,50})", line, re.IGNORECASE)

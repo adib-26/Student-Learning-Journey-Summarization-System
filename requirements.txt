@@ -40,8 +40,6 @@ fsspec==2025.10.0
 gast==0.7.0
 gitdb==4.0.12
 GitPython==3.1.45
-google-auth==2.48.0
-google-genai==1.47.0
 google-pasta==0.2.0
 grpcio==1.78.0
 h11==0.16.0
@@ -80,6 +78,7 @@ nltk==3.9.2
 numpy==2.0.2
 ocrmac==1.0.1 ; sys_platform == "darwin"
 omegaconf==2.3.0
+openai==2.38.0
 opencv-python==4.13.0.92
 openpyxl==3.1.5
 opt_einsum==3.4.0
@@ -172,6 +171,6 @@ xxhash==3.6.0
 yarl==1.22.0
 zipp==3.23.0
 
-pyenchant
-deepl
-reportlab
+pyenchant==3.3.0
+deepl==1.30.0
+reportlab==4.5.0
