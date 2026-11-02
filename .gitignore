@@ -5,8 +5,21 @@
 secrets.toml
 .streamlit/secrets.toml
 
+# Modal CLI credentials. `modal setup` writes these to ~/.modal.toml.
+# Never copy that file, a token id, or a token secret into this repository.
+.modal.toml
+**/.modal.toml
+modal.toml
+
+# Kaggle API credentials. Download from https://www.kaggle.com/settings.
+kaggle.json
+.kaggle/
+
 # Python environments, bytecode, and test output
 .venv/
+.venv-modal/
+.venv-kaggle/
+.venv-vertex/
 venv/
 env/
 venv-python*/

@@ -117,22 +117,22 @@ Alice Brown,95,97,93,96"""
 
         # Verify all three language versions exist
         assert 'llm_service_warning' in UI_STRINGS
-        assert 'llm_service_warning_id' in UI_STRINGS
+        assert 'llm_service_warning_ms' in UI_STRINGS
         assert 'llm_service_warning_zh' in UI_STRINGS
 
         # Verify all warnings contain the required warning icon
         assert UI_STRINGS['llm_service_warning'].startswith("⚠️")
-        assert UI_STRINGS['llm_service_warning_id'].startswith("⚠️")
+        assert UI_STRINGS['llm_service_warning_ms'].startswith("⚠️")
         assert UI_STRINGS['llm_service_warning_zh'].startswith("⚠️")
 
         # Verify English warning matches the client's exact message
         assert UI_STRINGS['llm_service_warning'] == SERVICE_UNAVAILABLE_MSG
 
-        # Verify Indonesian translation exists and is correct
-        assert UI_STRINGS['llm_service_warning_id'] == "⚠️ Maaf, layanan ringkasan AI lokal kami sementara tidak tersedia"
+        # Verify Malay translation exists and is correct
+        assert UI_STRINGS['llm_service_warning_ms'] == "⚠️ Maaf, perkhidmatan ringkasan AI kami tidak tersedia buat sementara waktu"
 
         # Verify Chinese translation exists and is correct
-        assert UI_STRINGS['llm_service_warning_zh'] == "⚠️ 抱歉，我们的本地AI摘要服务暂时无法使用"
+        assert UI_STRINGS['llm_service_warning_zh'] == "⚠️ 抱歉，AI摘要服务暂时无法使用"
 
     def test_system_all_backend_modules_import_successfully(self):
         """System test that ALL backend modules can be imported without errors"""

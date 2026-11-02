@@ -1,32 +1,32 @@
 """
-Secure client for a self-hosted LLM served through an OpenAI-compatible API
-(vLLM / vllm-metal on Apple Silicon).
+Secure client for local vLLM and Vertex AI Model Garden endpoints.
 
-This replaces the former Gemini cloud client. All inference now stays on the
-local machine: no cloud API key, no external data transport. The client adds
-enterprise resilience on top of the raw HTTP API:
+The application talks to an OpenAI-compatible API. In the primary deployment,
+Qwen3.6 runs in Vertex AI's managed vLLM serving container and requests use
+short-lived Google OAuth tokens. Local and Docker vLLM remain compatible. The
+client adds application-level resilience:
 
 - request timeouts and bounded retries with exponential backoff (SDK-level)
 - a cooldown circuit breaker shared across all client instances, so a down
   server fails fast instead of stalling every Streamlit rerun
-- a process-wide admission lock.  An 8 GB Apple-Silicon machine should not
-  receive several expensive generations at the same time.
-- a lightweight health check used at app startup
+- a process-wide admission lock that bounds work submitted by one app worker
+- a lightweight model-identity health check used at app startup
 
 Every call returns ``None`` on failure so existing rule-based fallbacks
 (draft summaries, empty extraction results) take over gracefully.
 
 Configuration (environment variables):
     LLM_BASE_URL                  OpenAI-compatible endpoint (default http://127.0.0.1:8000/v1)
-    LLM_MODEL                     served model name (default mlx-community/Qwen2.5-3B-Instruct-4bit)
+    LLM_MODEL                     served model name (default Qwen/Qwen3-VL-8B-Instruct)
     LLM_API_KEY                   only needed if the server was started with --api-key
     LLM_TIMEOUT_SECONDS           per-request timeout (default 120)
     LLM_MAX_RETRIES               SDK retry attempts for transient errors (default 2)
     LLM_BREAKER_COOLDOWN_SECONDS  fast-fail window after the server is unreachable (default 60)
-    LLM_MAX_TOKENS                completion token cap (default 320)
-    LLM_TEMPERATURE               sampling temperature (default 0.3)
-    LLM_QUEUE_TIMEOUT_SECONDS     how long a request may wait for the local
-                                  inference slot (default 5)
+    LLM_MAX_TOKENS                completion token cap (default 512)
+    LLM_TEMPERATURE               sampling temperature (default 0.2)
+    LLM_ENABLE_THINKING           Qwen reasoning mode (default false)
+    LLM_QUEUE_TIMEOUT_SECONDS     how long a request may wait for this app's
+                                  inference slot (default 30)
 """
 import os
 import time
@@ -39,6 +39,8 @@ from typing import Optional
 import streamlit as st
 from openai import OpenAI, APIConnectionError, APIStatusError
 
+from backend.gcp_access import google_access_token, is_vertex_endpoint
+
 try:
     from dotenv import load_dotenv
 except ImportError:  # pragma: no cover - deployment fallback if dependencies are incomplete
@@ -47,15 +49,13 @@ except ImportError:  # pragma: no cover - deployment fallback if dependencies ar
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8000/v1"
-DEFAULT_MODEL = "mlx-community/Qwen2.5-3B-Instruct-4bit"
+DEFAULT_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
 
-SERVICE_UNAVAILABLE_MSG = "⚠️ Sorry, our local AI summary service is temporarily unavailable"
+SERVICE_UNAVAILABLE_MSG = "⚠️ Sorry, the AI summary service is temporarily unavailable"
 
-# The UI and vLLM server commonly run in separate terminals.  Loading the
-# project-local file ensures Streamlit requests the model selected in `.env`
-# (for example the 1.5B fallback for an 8 GB Mac).  ``override=False``
-# preserves explicit shell configuration, which is important for Docker and
-# temporary troubleshooting commands.
+# The app and NVIDIA vLLM server may run in separate containers or terminals.
+# Loading the project-local file keeps model identity consistent for native
+# launches. Explicit process/container settings still win via override=False.
 _PROJECT_DOTENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 
 
@@ -78,9 +78,9 @@ _load_project_dotenv()
 # as opposed to a bad individual request (e.g. 400 prompt too long).
 _BREAKER_STATUS_CODES = {429, 500, 502, 503, 504}
 
-# One process-wide gate for every local model request.  The GLM-OCR adapter
-# imports this through ``get_local_inference_lock`` so an OCR model swap cannot
-# overlap a Qwen generation on an 8 GB unified-memory machine.
+# One process-wide gate for model requests from this app worker. vLLM owns
+# cross-process scheduling and batching; this lock only prevents duplicate
+# Streamlit reruns from submitting redundant work.
 _LOCAL_INFERENCE_LOCK = threading.Lock()
 
 
@@ -116,6 +116,20 @@ def _read_int_setting(name: str, default: int, minimum: int = 1) -> int:
     return value
 
 
+def _read_bool_setting(name: str, default: bool) -> bool:
+    """Read a boolean environment setting with a safe fallback."""
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    normalized = raw_value.strip().casefold()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    logger.warning("Ignoring invalid %s=%r; using %s", name, raw_value, default)
+    return default
+
+
 def get_configured_model() -> str:
     """Model name as configured, for audit logs and UI labels."""
     return os.getenv("LLM_MODEL", DEFAULT_MODEL)
@@ -128,25 +142,34 @@ class SecureLLMClient:
     # client instance, and one unreachable server should silence all of them.
     _unavailable_until: float = 0.0
     _warned: bool = False
-    # A single M1/8 GB local model is a shared, constrained resource.  This
-    # prevents Streamlit reruns from queuing multiple long generations inside
-    # vLLM and making every request look stalled.
+    # Bound duplicate work from one application process. NVIDIA vLLM handles
+    # global scheduling and continuous batching at the serving layer.
     _inference_lock = _LOCAL_INFERENCE_LOCK
 
     def __init__(self):
         self.base_url = os.getenv("LLM_BASE_URL", DEFAULT_BASE_URL)
         self.model = get_configured_model()
-        # vLLM only enforces a key when launched with --api-key.
-        self.api_key = os.getenv("LLM_API_KEY", "not-needed")
+        self._vertex = is_vertex_endpoint(self.base_url)
+        # vLLM only enforces a key when launched with --api-key. Vertex uses a
+        # short-lived Google token, which is fetched lazily immediately before
+        # each request so a missing login cannot break module import/startup.
+        self.api_key = "vertex-adc-pending" if self._vertex else os.getenv(
+            "LLM_API_KEY", "not-needed"
+        )
         self.timeout = _read_float_setting("LLM_TIMEOUT_SECONDS", 120.0, minimum=1.0)
         self.max_retries = _read_int_setting("LLM_MAX_RETRIES", 2, minimum=0)
         self.breaker_cooldown = _read_float_setting(
             "LLM_BREAKER_COOLDOWN_SECONDS", 60.0, minimum=1.0
         )
-        self.max_tokens = _read_int_setting("LLM_MAX_TOKENS", 320, minimum=1)
-        self.temperature = _read_float_setting("LLM_TEMPERATURE", 0.3, minimum=0.0)
+        self.max_tokens = _read_int_setting("LLM_MAX_TOKENS", 512, minimum=1)
+        self.temperature = _read_float_setting("LLM_TEMPERATURE", 0.2, minimum=0.0)
+        # Qwen3.6 enables reasoning by default. These short extraction and
+        # summary tasks are faster and more reliable in instruct mode because
+        # the completion budget is reserved for the answer rather than hidden
+        # reasoning. Operators can still opt in for other workloads.
+        self.enable_thinking = _read_bool_setting("LLM_ENABLE_THINKING", False)
         self.queue_timeout = _read_float_setting(
-            "LLM_QUEUE_TIMEOUT_SECONDS", 5.0, minimum=0.0
+            "LLM_QUEUE_TIMEOUT_SECONDS", 30.0, minimum=0.0
         )
 
         self._client = OpenAI(
@@ -156,13 +179,25 @@ class SecureLLMClient:
             max_retries=self.max_retries,
         )
 
+    def _refresh_vertex_token(self) -> None:
+        if not self._vertex:
+            return
+        self.api_key = google_access_token()
+        self._client.api_key = self.api_key
+
     # ------------------------------------------------------------------
     # Circuit breaker
     # ------------------------------------------------------------------
     @property
     def service_unavailable(self) -> bool:
         """True while the breaker is open (server was recently unreachable)."""
-        return time.monotonic() < SecureLLMClient._unavailable_until
+        if time.monotonic() < SecureLLMClient._unavailable_until:
+            return True
+        if SecureLLMClient._unavailable_until:
+            # Start the next outage as a fresh incident so the UI can display
+            # one warning again instead of remaining permanently suppressed.
+            SecureLLMClient.reset_circuit_breaker()
+        return False
 
     @classmethod
     def reset_circuit_breaker(cls) -> None:
@@ -186,16 +221,39 @@ class SecureLLMClient:
     # Public API
     # ------------------------------------------------------------------
     def health_check(self) -> bool:
-        """Probe /models and ensure the configured model is actually available."""
+        """Verify that the configured endpoint can serve this model."""
         try:
-            response = self._client.with_options(timeout=5.0, max_retries=0).models.list()
+            self._refresh_vertex_token()
+            probe = self._client.with_options(timeout=30.0, max_retries=0)
+            if self._vertex:
+                # Vertex self-deployed Model Garden endpoints guarantee Chat
+                # Completions, but they do not guarantee an OpenAI /models
+                # route. A one-token completion validates DNS, OAuth, routing,
+                # the deployed model, and replica readiness together.
+                response = probe.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": "Reply OK"}],
+                    temperature=0.0,
+                    max_tokens=1,
+                    extra_body={
+                        "chat_template_kwargs": {
+                            "enable_thinking": self.enable_thinking,
+                        }
+                    },
+                )
+                return bool(response.choices)
+
+            response = probe.models.list()
             data = response.get("data", []) if isinstance(response, dict) else getattr(response, "data", [])
             model_ids = [
                 item.get("id") if isinstance(item, dict) else getattr(item, "id", None)
                 for item in data
             ]
             model_ids = [model_id for model_id in model_ids if isinstance(model_id, str)]
-            if model_ids and self.model not in model_ids:
+            if not model_ids:
+                logger.warning("LLM model discovery returned no model IDs")
+                return False
+            if self.model not in model_ids:
                 logger.warning(
                     "LLM server is reachable but model %r is not advertised; available models: %s",
                     self.model,
@@ -216,7 +274,7 @@ class SecureLLMClient:
         system_prompt: Optional[str] = None,
     ) -> Optional[str]:
         """
-        Send a prompt to the local LLM and return the completion text,
+        Send a prompt to the configured model endpoint and return the completion text,
         or None on any failure so callers fall back to rule-based output.
         Per-call overrides for model, temperature, and max_tokens are optional.
         ``system_prompt`` keeps the task contract separate from untrusted
@@ -244,11 +302,19 @@ class SecureLLMClient:
         acquired = SecureLLMClient._inference_lock.acquire(timeout=self.queue_timeout)
         if not acquired:
             logger.warning(
-                "Local LLM is busy; request skipped after waiting %.1fs", self.queue_timeout
+                "Application inference slot is busy; request skipped after %.1fs", self.queue_timeout
             )
             return None
 
         try:
+            # Refresh after admission so queued requests do not perform needless
+            # OAuth work. Cached Google credentials refresh only near expiry.
+            try:
+                self._refresh_vertex_token()
+            except Exception as e:
+                self._trip_breaker(f"vertex auth: {e}")
+                return None
+
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
@@ -259,6 +325,11 @@ class SecureLLMClient:
                 messages=messages,
                 temperature=requested_temperature,
                 max_tokens=requested_max_tokens,
+                extra_body={
+                    "chat_template_kwargs": {
+                        "enable_thinking": self.enable_thinking,
+                    }
+                },
             )
             if not response.choices:
                 return None
@@ -287,7 +358,7 @@ class SecureLLMClient:
 
 
 def get_local_inference_lock() -> threading.Lock:
-    """Return the process-wide gate shared by Qwen and local visual OCR."""
+    """Return the app-process gate shared by visual and text requests."""
     return _LOCAL_INFERENCE_LOCK
 
 

@@ -66,7 +66,13 @@ class TestSecureLLMClient:
 
     def test_initialization_defaults(self, mock_openai):
         """Client initializes with local-server defaults and a closed breaker"""
-        client = SecureLLMClient()
+        clean = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in {"LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY"}
+        }
+        with patch.dict(os.environ, clean, clear=True):
+            client = SecureLLMClient()
         assert client.base_url == DEFAULT_BASE_URL
         assert client.model == DEFAULT_MODEL
         assert client.service_unavailable is False
@@ -220,8 +226,15 @@ class TestSecureLLMClient:
         assert client.service_unavailable is True
 
     def test_health_check_success(self, mock_openai):
-        """health_check returns True when /models responds"""
+        """health_check accepts a non-empty model list containing the configured model."""
+        response = MagicMock()
+        advertised_model = MagicMock()
+        advertised_model.id = DEFAULT_MODEL
+        response.data = [advertised_model]
+        mock_openai.return_value.with_options.return_value.models.list.return_value = response
+
         client = SecureLLMClient()
+
         assert client.health_check() is True
 
     def test_health_check_detects_configured_model_mismatch(self, mock_openai):

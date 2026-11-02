@@ -56,7 +56,7 @@ def extract_text_from_image(image_file) -> str:
 
 
 def _extract_pdf_text_from_bytes(file_bytes: bytes, maximum_pages: int = 20) -> str:
-    """Bounded legacy native PDF fallback when GLM OCR is unavailable."""
+    """Bounded native PDF fallback when vLLM vision is unavailable."""
     try:
         import pypdf
         pdf_reader = pypdf.PdfReader(io.BytesIO(file_bytes))
@@ -85,16 +85,15 @@ def _is_usable_fallback_text(text: object) -> bool:
 
 
 def extract_unstructured_text(file_name: str, file_bytes: bytes) -> dict:
-    """Use GLM-OCR first where appropriate, then preserve native fallbacks.
+    """Use the shared vLLM vision model where needed, then native fallbacks.
 
-    The returned dictionary is intentionally simple so it can live in
-    Streamlit's per-session cache without serialising a model/client object.
-    For born-digital PDFs the GLM adapter returns native text directly and only
-    visually OCRs scanned/no-text pages in its default shared-HTTP mode.
+    The returned dictionary remains simple enough for Streamlit's per-session
+    cache. Born-digital PDF pages keep native text; scanned pages and images use
+    the configured multimodal model through its OpenAI-compatible endpoint.
     """
     glm_result: GlmOcrResult = extract_text_with_glm_ocr(file_name, file_bytes)
     # A hard source-size rejection exists to keep one oversized upload from
-    # exhausting unified memory. Do not defeat that guard by immediately
+    # exhausting process memory. Do not defeat that guard by immediately
     # sending the same bytes into a legacy fallback parser.
     if glm_result.error in {
         "document exceeds the configured OCR safety limit",

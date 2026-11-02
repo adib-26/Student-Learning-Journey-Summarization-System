@@ -156,9 +156,9 @@ def _recipient_evidence_snippets(text: str, maximum: int) -> str:
 def _bounded_document_evidence(text: str) -> str:
     """Fit evidence into the local model context without silently overflowing it."""
     try:
-        max_chars = int(os.getenv("LLM_EXTRACTION_MAX_DOCUMENT_CHARS", "6500"))
+        max_chars = int(os.getenv("LLM_EXTRACTION_MAX_DOCUMENT_CHARS", "12000"))
     except ValueError:
-        max_chars = 6500
+        max_chars = 12000
     max_chars = max(1000, max_chars)
 
     if len(text) <= max_chars:
@@ -329,9 +329,9 @@ def get_text_info(uploaded_file):
         result = converter.convert(temp_path)
         markdown_text = result.document.export_to_markdown()
 
-        # Derive a deterministic fallback from the same text supplied to Qwen.
-        # Do not make a second name-only model request: the extraction contract
-        # below returns student_name in this single local Qwen call.
+        # Derive a deterministic fallback from the same text supplied to the model.
+        # Do not make a second name-only request: the extraction contract below
+        # returns student_name in the same structured response.
         rule_based_name = extract_student_name(markdown_text, allow_llm_fallback=False)
 
         # Call the local LLM to extract the name, certificate data, and summary.
@@ -540,7 +540,7 @@ def get_student_name_from_text(text: str, *, allow_llm_fallback: bool = False) -
     """
     Rule-based fallback for the unstructured pipeline.
 
-    The pipeline obtains Qwen's proposed student_name in its one extraction
-    request, so this defaults to no separate name-only model request.
+    The pipeline obtains the model-proposed student_name in its structured
+    extraction request, so this defaults to no separate name-only request.
     """
     return extract_student_name(text, allow_llm_fallback=allow_llm_fallback)

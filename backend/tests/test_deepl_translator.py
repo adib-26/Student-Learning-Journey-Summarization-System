@@ -22,35 +22,34 @@ class TestDeepLTranslator:
         """All local-LLM availability strings are properly added to UI_STRINGS."""
         # Verify all English strings exist
         assert "llm_service_warning" in UI_STRINGS
-        assert UI_STRINGS["llm_service_warning"] == "⚠️ Sorry, our local AI summary service is temporarily unavailable"
+        assert UI_STRINGS["llm_service_warning"] == "⚠️ Sorry, the AI summary service is temporarily unavailable"
         
-        # Verify Indonesian translation exists
-        assert "llm_service_warning_id" in UI_STRINGS
-        assert UI_STRINGS["llm_service_warning_id"] == "⚠️ Maaf, layanan ringkasan AI lokal kami sementara tidak tersedia"
+        # Verify Malay translation exists
+        assert "llm_service_warning_ms" in UI_STRINGS
+        assert UI_STRINGS["llm_service_warning_ms"] == "⚠️ Maaf, perkhidmatan ringkasan AI kami tidak tersedia buat sementara waktu"
         
         # Verify Chinese translation exists
         assert "llm_service_warning_zh" in UI_STRINGS
-        assert UI_STRINGS["llm_service_warning_zh"] == "⚠️ 抱歉，我们的本地AI摘要服务暂时无法使用"
+        assert UI_STRINGS["llm_service_warning_zh"] == "⚠️ 抱歉，AI摘要服务暂时无法使用"
 
     @patch('streamlit.session_state', {'language': 'en'})
     def test_get_string_returns_correct_llm_warning_english(self):
         """Test that get_string returns the correct English local-LLM warning."""
         result = self.translator.get_string("llm_service_warning")
-        assert result == "⚠️ Sorry, our local AI summary service is temporarily unavailable"
+        assert result == "⚠️ Sorry, the AI summary service is temporarily unavailable"
 
-    @patch('streamlit.session_state', {'language': 'id'})
-    def test_get_string_returns_correct_llm_warning_indonesian(self):
-        """Test that the Indonesian local-LLM warning string exists and can be retrieved."""
-        # Access the Indonesian string directly from UI_STRINGS since DeepL is offline
-        result = UI_STRINGS["llm_service_warning_id"]
-        assert result == "⚠️ Maaf, layanan ringkasan AI lokal kami sementara tidak tersedia"
+    @patch('streamlit.session_state', {'language': 'ms'})
+    def test_get_string_returns_correct_llm_warning_malay(self):
+        """Test that the Malay local-LLM warning string exists and can be retrieved."""
+        result = UI_STRINGS["llm_service_warning_ms"]
+        assert result == "⚠️ Maaf, perkhidmatan ringkasan AI kami tidak tersedia buat sementara waktu"
 
     @patch('streamlit.session_state', {'language': 'zh'})
     def test_get_string_returns_correct_llm_warning_chinese(self):
         """Test that the Chinese local-LLM warning string exists and can be retrieved."""
         # Access the Chinese string directly from UI_STRINGS since DeepL is offline
         result = UI_STRINGS["llm_service_warning_zh"]
-        assert result == "⚠️ 抱歉，我们的本地AI摘要服务暂时无法使用"
+        assert result == "⚠️ 抱歉，AI摘要服务暂时无法使用"
 
     def test_llm_warning_key_not_found_fallback(self):
         """Test that if a translation key is missing, it falls back gracefully"""
@@ -66,7 +65,7 @@ class TestDeepLTranslator:
     def test_llm_warnings_include_warning_icon(self):
         """Verify all local-LLM warnings include the ⚠️ icon."""
         assert "⚠️" in UI_STRINGS["llm_service_warning"]
-        assert "⚠️" in UI_STRINGS["llm_service_warning_id"]
+        assert "⚠️" in UI_STRINGS["llm_service_warning_ms"]
         assert "⚠️" in UI_STRINGS["llm_service_warning_zh"]
 
 

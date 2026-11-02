@@ -206,7 +206,7 @@ class DeepLTranslator:
 
     LANGUAGES = {
         'en': 'EN',  # English
-        'id': 'ID',  # Indonesian
+        'ms': 'MS',  # Malay (Bahasa Melayu)
         'zh': 'ZH',  # Chinese (DeepL's supported generic target)
     }
 
@@ -438,9 +438,9 @@ UI_STRINGS = {
     'quota_exceeded': 'Monthly translation quota exceeded. Showing original content.',
     'updating_summary': '🔄 Updating summary for your selected axes...',
     'regenerate_ai_summary': '↻ Regenerate AI Summary',
-    'llm_service_warning': '⚠️ Sorry, our local AI summary service is temporarily unavailable',
-    'llm_service_warning_id': '⚠️ Maaf, layanan ringkasan AI lokal kami sementara tidak tersedia',
-    'llm_service_warning_zh': '⚠️ 抱歉，我们的本地AI摘要服务暂时无法使用',
+    'llm_service_warning': '⚠️ Sorry, the AI summary service is temporarily unavailable',
+    'llm_service_warning_ms': '⚠️ Maaf, perkhidmatan ringkasan AI kami tidak tersedia buat sementara waktu',
+    'llm_service_warning_zh': '⚠️ 抱歉，AI摘要服务暂时无法使用',
 }
 
 

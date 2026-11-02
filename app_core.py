@@ -45,8 +45,8 @@ from backend.text_name import resolve_student_name
 from backend.download import get_report_bytes, create_download_button
 
 
-_SUMMARY_CACHE_VERSION = "local-vllm-summary-v1"
-_UNSTRUCTURED_ANALYSIS_CACHE_VERSION = "unstructured-analysis-v4"
+_SUMMARY_CACHE_VERSION = "nvidia-vllm-summary-v1"
+_UNSTRUCTURED_ANALYSIS_CACHE_VERSION = "unstructured-analysis-v5"
 
 
 def _display_student_name(value: object) -> str:
@@ -120,7 +120,7 @@ def _unstructured_ocr_cache_key(file_name: str, file_bytes: bytes) -> str:
     """Keep OCR output only in this browser session, keyed by a file digest."""
     file_digest = hashlib.sha256(file_bytes).hexdigest()
     return _stable_fingerprint({
-        "contract": "unstructured-ocr-v1",
+        "contract": "vllm-vision-ocr-v2",
         "extension": (file_name or "").rsplit(".", 1)[-1].casefold(),
         "file_digest": file_digest,
         "ocr": get_glm_ocr_cache_identity(),
@@ -128,7 +128,7 @@ def _unstructured_ocr_cache_key(file_name: str, file_bytes: bytes) -> str:
 
 
 def _extract_unstructured_document_cached(file_name: str, file_bytes: bytes) -> tuple[dict, bool]:
-    """Run GLM/native OCR at most once per document/configuration per session."""
+    """Run native/vLLM visual extraction once per configuration and session."""
     cache = _get_session_cache("unstructured_ocr_cache", limit=4)
     cache_key = _unstructured_ocr_cache_key(file_name, file_bytes)
     cached = cache.get(cache_key)
@@ -156,14 +156,13 @@ def _extract_unstructured_document_cached(file_name: str, file_bytes: bytes) -> 
 
 
 def _resolve_unstructured_student_name(rule_based_name: object, ai_data: object, text_source: str) -> str:
-    """Accept Qwen's recipient only when document evidence validates it.
+    """Accept the model-proposed recipient only when evidence validates it.
 
-    The unstructured pipeline already makes one Qwen call for certificates and
-    skills.  Reusing its ``student_name`` field corrects weak OCR heuristics
-    without adding a separate slow model request on an 8 GB Mac.
+    The unstructured pipeline reuses the single structured extraction response
+    for the recipient, certificates, and skills instead of issuing another call.
     """
-    qwen_name = ai_data.get("student_name", "") if isinstance(ai_data, dict) else ""
-    return resolve_student_name(rule_based_name, qwen_name, text_source)
+    model_name = ai_data.get("student_name", "") if isinstance(ai_data, dict) else ""
+    return resolve_student_name(rule_based_name, model_name, text_source)
 
 
 def initialize_security_components():
@@ -182,10 +181,11 @@ def initialize_security_components():
         st.session_state["llm_health_checked"] = True
         if not secure_client.health_check():
             st.warning(
-                "⚠️ Local AI server is not ready (unreachable or model mismatch) — "
-                "reports will use built-in rule-based summaries. Start it with "
-                "`bash scripts/start_mlx_vlm.sh`, then run `bash scripts/doctor_vllm.sh`. "
-                "Use `start_vllm.sh` only for the legacy text-only profile.",
+                "⚠️ The remote model is not ready (unreachable or model mismatch); "
+                "reports will use built-in fallbacks. Run "
+                "`bash scripts/deploy_inference.sh`. It deploys on Modal and, "
+                "if that fails, deploys Qwen3.6-35B-A3B on Vertex AI Model Garden, "
+                "then writes `LLM_BASE_URL` into `.env`.",
                 icon="⚠️",
             )
 
@@ -248,7 +248,7 @@ def process_uploaded_file(active_file_object, file_name, file_bytes, audit_logge
                         st.stop()
                     if not isinstance(extracted_text, str) or not extracted_text.strip():
                         st.warning(
-                            "Local visual OCR was unavailable; the app is using its built-in document fallback.",
+                            "Visual extraction was unavailable; the app is using its built-in document fallback.",
                             icon="⚠️",
                         )
             else:
@@ -333,8 +333,8 @@ def handle_unstructured_files(extracted_text, metadata, active_file_object, file
                 ai_data = cached_analysis.get("ai_data", {})
                 cache_hit = True
             else:
-                # Keep the deterministic result solely as a fallback.  The
-                # single Qwen extraction below is asked for the recipient too.
+                # Keep the deterministic result as a fallback. The structured
+                # model extraction below also returns the recipient.
                 rule_based_name = get_student_name_from_text(
                     text_source,
                     allow_llm_fallback=False,

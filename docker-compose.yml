@@ -1,17 +1,80 @@
 services:
+  vllm:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.11.1}
+    command:
+      - --model
+      - ${VLLM_MODEL:-Qwen/Qwen3-VL-8B-Instruct}
+      - --served-model-name
+      - ${VLLM_MODEL:-Qwen/Qwen3-VL-8B-Instruct}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --dtype
+      - auto
+      - --max-model-len
+      - ${VLLM_MAX_MODEL_LEN:-16384}
+      - --gpu-memory-utilization
+      - ${VLLM_GPU_MEMORY_UTILIZATION:-0.90}
+      - --max-num-seqs
+      - ${VLLM_MAX_NUM_SEQS:-2}
+      - --tensor-parallel-size
+      - ${VLLM_TENSOR_PARALLEL_SIZE:-1}
+      - --limit-mm-per-prompt
+      - '{"image": 1, "video": 0}'
+      - --mm-processor-cache-gb
+      - "0"
+      - --disable-log-requests
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+      OMP_NUM_THREADS: ${OMP_NUM_THREADS:-1}
+    ports:
+      # Keep the model API on loopback. The app uses the private Compose network.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+    shm_size: ${VLLM_SHM_SIZE:-8gb}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 10m
+    init: true
+    restart: unless-stopped
+
   streamlit-app:
     build:
       context: .
     ports:
       - "127.0.0.1:8501:8501"
     environment:
-      - DEEPL_API_KEY=${DEEPL_API_KEY:-}
-      # The vLLM server runs natively on the host (Metal GPU is not available
-      # inside Linux containers); the container reaches it via host.docker.internal.
-      - LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:8000/v1}
-      - LLM_MODEL=${LLM_MODEL:-mlx-community/Qwen2.5-3B-Instruct-4bit}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      DEEPL_API_KEY: ${DEEPL_API_KEY:-}
+      LLM_BASE_URL: http://vllm:8000/v1
+      LLM_MODEL: ${VLLM_MODEL:-Qwen/Qwen3-VL-8B-Instruct}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-180}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-512}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.2}
+      LLM_QUEUE_TIMEOUT_SECONDS: ${LLM_QUEUE_TIMEOUT_SECONDS:-30}
+      LLM_EXTRACTION_MAX_DOCUMENT_CHARS: ${LLM_EXTRACTION_MAX_DOCUMENT_CHARS:-12000}
+      VLM_OCR_ENABLED: ${VLM_OCR_ENABLED:-1}
+      VLM_OCR_MODE: ${VLM_OCR_MODE:-http}
+      VLM_OCR_ALLOW_REMOTE: "1"
+      VLM_OCR_MAX_PAGES: ${VLM_OCR_MAX_PAGES:-4}
+      VLM_OCR_MAX_TOTAL_PAGES: ${VLM_OCR_MAX_TOTAL_PAGES:-30}
+      VLM_OCR_MAX_TOKENS: ${VLM_OCR_MAX_TOKENS:-2048}
+    depends_on:
+      vllm:
+        condition: service_healthy
     volumes:
       - streamlit-logs:/app/logs
       - backend-logs:/app/backend/logs
@@ -20,6 +83,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  huggingface-cache:
   streamlit-logs:
   backend-logs:
   api-data:

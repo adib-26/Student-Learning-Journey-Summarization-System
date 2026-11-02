@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
 #
-# Read-only readiness check for a local OpenAI-compatible vLLM endpoint.
+# Read-only readiness check for an NVIDIA vLLM OpenAI-compatible endpoint.
 #
-# This script does not start, stop, install, or reconfigure vLLM.  It only
-# calls GET /models and sends one tiny, deterministic chat completion.  It is
-# deliberately small enough to run safely alongside the 4-bit 3B model on an
-# 8 GB Apple-silicon Mac.
+# This script calls GET /models and sends one tiny deterministic completion.
+# It does not start, stop, install, or reconfigure the model service.
 #
 # Usage:
 #   bash scripts/doctor_vllm.sh
 #   bash scripts/doctor_vllm.sh --endpoint http://127.0.0.1:8000/v1
-#   bash scripts/doctor_vllm.sh --model mlx-community/Qwen2.5-3B-Instruct-4bit
+#   bash scripts/doctor_vllm.sh --model Qwen/Qwen3-VL-8B-Instruct
 #
 # Configuration (environment variables):
 #   LLM_BASE_URL                     OpenAI-compatible base URL
 #                                    (default: http://127.0.0.1:8000/v1)
-#   LLM_MODEL                        Model ID to validate. If unset, the first
+#   VLLM_MODEL                     Model ID to validate. If unset, the first
 #                                    model advertised by /models is used.
 #   LLM_API_KEY                      Optional API key for a protected server.
 #   VLLM_DOCTOR_TIMEOUT_SECONDS      Total timeout per HTTP request (default: 45)
@@ -33,7 +31,7 @@ PROJECT_ENV_FILE="$PROJECT_DIR/.env"
 
 load_project_llm_settings() {
     # Do not source .env: it is configuration data, not shell code.  Keep the
-    # readiness check aligned with the locally selected Qwen model, but do not
+    # readiness check aligned with the selected NVIDIA model, but do not let
     # let it execute values or overwrite exported shell settings.
     local env_file="$1"
     local line key value first_char last_char value_length
@@ -54,7 +52,7 @@ load_project_llm_settings() {
         value="${value%"${value##*[![:space:]]}"}"
 
         case "$key" in
-            LLM_BASE_URL|LLM_MODEL|LLM_API_KEY|VLLM_DOCTOR_TIMEOUT_SECONDS|VLLM_DOCTOR_CONNECT_TIMEOUT_SECONDS) ;;
+            LLM_BASE_URL|VLLM_MODEL|LLM_API_KEY|VLLM_DOCTOR_TIMEOUT_SECONDS|VLLM_DOCTOR_CONNECT_TIMEOUT_SECONDS) ;;
             *) continue ;;
         esac
 
@@ -84,7 +82,7 @@ readonly DEFAULT_TIMEOUT_SECONDS=45
 readonly DEFAULT_CONNECT_TIMEOUT_SECONDS=5
 
 base_url="${LLM_BASE_URL:-$DEFAULT_BASE_URL}"
-configured_model="${LLM_MODEL:-}"
+configured_model="${VLLM_MODEL:-}"
 request_timeout="${VLLM_DOCTOR_TIMEOUT_SECONDS:-$DEFAULT_TIMEOUT_SECONDS}"
 connect_timeout="${VLLM_DOCTOR_CONNECT_TIMEOUT_SECONDS:-$DEFAULT_CONNECT_TIMEOUT_SECONDS}"
 models_body=""
@@ -174,24 +172,12 @@ find_json_python() {
     local candidate
     local candidate_path
     local configured_python="${VLLM_DOCTOR_PYTHON:-}"
-    local venv_dir="${VLLM_VENV_DIR:-}"
-
-    if [[ -z "$venv_dir" && -n "${HOME:-}" ]]; then
-        venv_dir="${HOME}/.venv-vllm-metal"
-    fi
 
     if [[ -n "$configured_python" ]]; then
         [[ -x "$configured_python" ]] || die "VLLM_DOCTOR_PYTHON is not executable: ${configured_python}"
         "$configured_python" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)' >/dev/null 2>&1 \
             || die "VLLM_DOCTOR_PYTHON must be Python 3.8 or newer."
         json_python="$configured_python"
-        return
-    fi
-
-    # vllm-metal installs its own Python, so prefer it when available.
-    if [[ -n "$venv_dir" && -x "$venv_dir/bin/python" ]] \
-        && "$venv_dir/bin/python" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 8) else 1)' >/dev/null 2>&1; then
-        json_python="$venv_dir/bin/python"
         return
     fi
 
@@ -315,7 +301,7 @@ if ! models_metrics="$(
         --write-out '%{http_code} %{time_total}' \
         "$base_url/models"
 )"; then
-    die "Cannot reach ${base_url}/models. Ensure the vLLM server is running, then retry (for this project: bash scripts/start_vllm.sh)."
+    die "Cannot reach ${base_url}/models. Ensure the NVIDIA deployment is running, then retry (for this project: docker compose up)."
 fi
 
 models_status="${models_metrics%% *}"
@@ -366,7 +352,7 @@ if ! completion_metrics="$(
         --write-out '%{http_code} %{time_total}' \
         "$base_url/chat/completions"
 )"; then
-    die "Could not complete a short inference request within ${request_timeout}s. Check the vLLM server logs and available unified memory."
+    die "Could not complete a short inference request within ${request_timeout}s. Check the vLLM logs and available GPU memory."
 fi
 
 completion_status="${completion_metrics%% *}"

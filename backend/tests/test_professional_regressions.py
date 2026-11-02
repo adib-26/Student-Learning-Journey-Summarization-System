@@ -174,7 +174,7 @@ def test_external_translation_redacts_identifiers_without_caching_report_text():
     source = "Aisha Rahman can be reached at aisha@example.com, +1 555-123-4567, ID 12345678."
     result = translation.translate_text(
         source,
-        "id",
+        "ms",
         protected_values=["Aisha Rahman"],
     )
 
@@ -186,7 +186,7 @@ def test_external_translation_redacts_identifiers_without_caching_report_text():
     assert not translation.cache.memory_cache
 
     # Each PII-bearing request gets a fresh nonce and is never cached.
-    assert translation.translate_text(source, "id", protected_values=["Aisha Rahman"]) == result
+    assert translation.translate_text(source, "ms", protected_values=["Aisha Rahman"]) == result
     assert len(client.calls) == 2
     assert client.calls[0] != client.calls[1]
 
@@ -232,7 +232,7 @@ def test_batch_translation_materializes_identifier_iterators_for_every_item():
     source_texts = ["Aisha Rahman earned a distinction.", "Aisha Rahman completed a project."]
     results = translation.batch_translate(
         source_texts,
-        "id",
+        "ms",
         protected_values=iter(["Aisha Rahman"]),
     )
 
@@ -266,7 +266,7 @@ def test_translation_rejects_response_with_missing_or_duplicate_placeholders():
     translation.cache = CacheManager(cache_file="", max_entries=2)
     translation.quota = Quota()
 
-    assert translation.translate_text(source, "id", protected_values=["Aisha Rahman"]) == source
+    assert translation.translate_text(source, "ms", protected_values=["Aisha Rahman"]) == source
 
 
 def test_public_summary_translation_passes_the_resolved_student_name(monkeypatch):
@@ -285,11 +285,11 @@ def test_public_summary_translation_passes_the_resolved_student_name(monkeypatch
     output = summarizer.generate_summary(
         {"student_name": "Aisha Rahman", "student_details": {}},
         use_llm=False,
-        language="id",
+        language="ms",
     )
 
     assert output and output.startswith("translated:")
-    assert captured["language"] == "id"
+    assert captured["language"] == "ms"
     assert "Aisha Rahman" in captured["protected_values"]
 
 

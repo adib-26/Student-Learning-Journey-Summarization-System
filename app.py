@@ -50,10 +50,10 @@ with col3_header:
     st.markdown("### 🌐 Language / 語言")
     lang = st.selectbox(
         "Select Language:",
-        options=['en', 'id', 'zh'],
+        options=['en', 'ms', 'zh'],
         format_func=lambda x: {
             'en': '🇬🇧 English',
-            'id': '🇮🇩 Bahasa Indonesia',
+            'ms': '🇲🇾 Bahasa Melayu',
             'zh': '中文'
         }[x],
         label_visibility="collapsed"
@@ -77,8 +77,8 @@ with col1_header:
     st.caption(translated_subtitle)
 # Show a warning while the local AI server is unreachable
 if getattr(secure_client, 'service_unavailable', False):
-    if current_lang == 'id':
-        quota_msg = ui_translator.get_string("llm_service_warning_id", current_lang)
+    if current_lang == 'ms':
+        quota_msg = ui_translator.get_string("llm_service_warning_ms", current_lang)
     elif current_lang == 'zh':
         quota_msg = ui_translator.get_string("llm_service_warning_zh", current_lang)
     else:
@@ -91,9 +91,9 @@ if getattr(secure_client, 'service_unavailable', False):
 if current_lang == 'zh':
     drop_text = "将文件拖放至此处"
     browse_text = "浏览文件"
-elif current_lang == 'id':
+elif current_lang == 'ms':
     drop_text = "Seret dan lepaskan fail di sini"
-    browse_text = "Telusuri file"
+    browse_text = "Semak imbas fail"
 else:
     drop_text = "Drag and drop file here"
     browse_text = "Browse files"

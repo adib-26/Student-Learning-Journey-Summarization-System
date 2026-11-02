@@ -1,4 +1,4 @@
-"""Regression tests for the optional, one-shot GLM-OCR ingestion path."""
+"""Regression tests for bounded visual extraction through vLLM."""
 
 import os
 import sys
@@ -13,7 +13,7 @@ def _settings(**overrides):
         "mode": "auto",
         "transport": "subprocess",
         "force": False,
-        "model": "mlx-community/GLM-OCR-bf16",
+        "model": "Qwen/Qwen3-VL-8B-Instruct",
         "python": sys.executable,
         "timeout": 30.0,
         "health_timeout": 1.0,
@@ -52,7 +52,7 @@ def test_auto_pdf_keeps_native_pages_and_ocrs_only_scanned_pages():
     assert "A" * 80 in result.text
     assert "===== Page 2 =====" in result.text
     assert "Scanned certificate text" in result.text
-    assert result.engine == "glm-ocr-subprocess+native-pdf"
+    assert result.engine == "vllm-vision-subprocess+native-pdf"
     assert result.native_pages == 1
     # The total-document cap is passed into native extraction, rather than
     # extracting every page before it can take effect.
@@ -135,7 +135,7 @@ def test_subprocess_worker_defaults_to_offline_model_loading(monkeypatch):
     assert "glm_ocr_worker.py" in captured["command"][1]
 
 
-def test_http_mode_sends_one_image_per_request_then_unloads_model(monkeypatch):
+def test_http_mode_sends_one_image_per_request_and_legacy_mlx_unloads(monkeypatch):
     from backend import mlx_glm_ocr
 
     class Response:
@@ -169,12 +169,17 @@ def test_http_mode_sends_one_image_per_request_then_unloads_model(monkeypatch):
     for _, kwargs in chat_calls:
         content = kwargs["json"]["messages"][0]["content"]
         assert len(content) == 2
-        assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+        image_parts = [part for part in content if part.get("type") == "image_url"]
+        text_parts = [part for part in content if part.get("type") == "text"]
+        assert len(image_parts) == 1
+        assert image_parts[0]["image_url"]["url"].startswith("data:image/png;base64,")
+        assert "Transcribe every visible character" in text_parts[0]["text"]
+        assert kwargs["json"]["model"] == "Qwen/Qwen3-VL-8B-Instruct"
         assert kwargs["headers"] == {"Authorization": "Bearer test-key"}
     assert post_calls[-1][0].endswith("/unload")
 
 
-def test_http_mode_rejects_a_non_mlx_health_endpoint(monkeypatch):
+def test_http_mode_rejects_invalid_model_discovery(monkeypatch):
     from backend import mlx_glm_ocr
 
     class Response:
@@ -191,46 +196,66 @@ def test_http_mode_rejects_a_non_mlx_health_endpoint(monkeypatch):
         )
 
     assert pages == {}
-    assert error == "configured OCR service is not MLX-VLM"
+    assert error == "vLLM model discovery returned an invalid response"
     post_mock.assert_not_called()
 
 
-def test_subprocess_worker_is_skipped_when_any_local_qwen_service_is_live(monkeypatch):
+def test_standard_vllm_endpoint_keeps_the_model_resident(monkeypatch):
     from backend import mlx_glm_ocr
 
-    class MlxHealth:
+    class Response:
         status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
 
         def json(self):
-            return {"status": "healthy", "loaded_model": None}
+            return self._payload
 
-    monkeypatch.setenv("LLM_BASE_URL", "http://127.0.0.1:8000/v1")
-    monkeypatch.setattr(mlx_glm_ocr.requests, "get", lambda *args, **kwargs: MlxHealth())
-    guarded = mlx_glm_ocr._apply_qwen_memory_guard(_settings())
+    post_urls = []
+    monkeypatch.setattr(
+        mlx_glm_ocr.requests,
+        "get",
+        lambda *args, **kwargs: Response({"data": [{"id": "Qwen/Qwen3-VL-8B-Instruct"}]}),
+    )
 
-    assert guarded["enabled"] is False
-    assert "local Qwen/MLX" in guarded["memory_guard_error"]
+    def fake_post(url, **kwargs):
+        post_urls.append(url)
+        return Response({"choices": [{"message": {"content": "Text"}}]})
+
+    monkeypatch.setattr(mlx_glm_ocr.requests, "post", fake_post)
+    pages, error = mlx_glm_ocr._run_http_ocr(
+        {1: b"image"},
+        _settings(mode="http", transport="http", allow_remote=False),
+    )
+
+    assert pages == {1: "Text"}
+    assert error == ""
+    assert not any(url.endswith("/unload") for url in post_urls)
 
 
-def test_subprocess_guard_allows_an_explicit_high_memory_override(monkeypatch):
-    from backend import mlx_glm_ocr
+def test_visual_settings_use_the_same_model_and_endpoint_as_text(monkeypatch):
+    from backend.mlx_glm_ocr import get_glm_ocr_settings
 
-    class Health:
-        status_code = 200
+    monkeypatch.setenv("LLM_MODEL", "organization/multimodal-model")
+    monkeypatch.setenv("LLM_BASE_URL", "https://vllm.internal/v1")
+    monkeypatch.setenv("LLM_API_KEY", "secret")
 
-    monkeypatch.setenv("LLM_BASE_URL", "http://127.0.0.1:8000/v1")
-    monkeypatch.setattr(mlx_glm_ocr.requests, "get", lambda *args, **kwargs: Health())
-    settings = _settings(allow_concurrent_qwen=True)
+    settings = get_glm_ocr_settings()
 
-    assert mlx_glm_ocr._apply_qwen_memory_guard(settings) == settings
+    assert settings["model"] == "organization/multimodal-model"
+    assert settings["base_url"] == "https://vllm.internal/v1"
+    assert settings["api_key"] == "secret"
 
 
-def test_default_settings_use_shared_http_and_bounded_upload_limits(monkeypatch):
+def test_default_settings_use_shared_vllm_and_bounded_upload_limits(monkeypatch):
     from backend.mlx_glm_ocr import get_glm_ocr_settings
 
     for key in (
-        "GLM_OCR_MODE", "GLM_OCR_BASE_URL", "GLM_OCR_MAX_PAGES",
-        "GLM_OCR_MAX_TOTAL_PAGES", "GLM_OCR_MAX_DOCUMENT_BYTES", "LLM_BASE_URL",
+        "VLM_OCR_MODE", "VLM_OCR_MAX_PAGES", "VLM_OCR_MAX_TOTAL_PAGES",
+        "VLM_OCR_MAX_DOCUMENT_BYTES", "GLM_OCR_MODE", "GLM_OCR_MAX_PAGES",
+        "GLM_OCR_MAX_TOTAL_PAGES", "GLM_OCR_MAX_DOCUMENT_BYTES",
+        "LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -239,9 +264,10 @@ def test_default_settings_use_shared_http_and_bounded_upload_limits(monkeypatch)
     assert settings["mode"] == "http"
     assert settings["transport"] == "http"
     assert settings["base_url"] == "http://127.0.0.1:8000/v1"
-    assert settings["max_pages"] == 1
-    assert settings["max_total_pages"] == 20
-    assert settings["max_document_bytes"] == 32 * 1024 * 1024
+    assert settings["model"] == "Qwen/Qwen3-VL-8B-Instruct"
+    assert settings["max_pages"] == 4
+    assert settings["max_total_pages"] == 30
+    assert settings["max_document_bytes"] == 64 * 1024 * 1024
 
 
 def test_legacy_auto_and_force_modes_migrate_to_safe_shared_server(monkeypatch):
@@ -262,7 +288,7 @@ def test_loader_uses_tesseract_only_when_glm_does_not_return_text():
 
     with patch(
         "backend.data_loader.extract_text_with_glm_ocr",
-        return_value=GlmOcrResult(error="MLX worker unavailable"),
+        return_value=GlmOcrResult(error="vLLM service unavailable"),
     ), patch("backend.data_loader.extract_text_from_image", return_value="Fallback OCR text"):
         result = extract_unstructured_text("certificate.png", b"image")
 

@@ -1,14 +1,13 @@
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![Streamlit](https://img.shields.io/badge/Streamlit-App-red.svg)
-![vLLM](https://img.shields.io/badge/vLLM-Local_Inference-30a3dc.svg)
+![Vertex AI](https://img.shields.io/badge/Vertex_AI-Model_Garden-4285F4.svg)
 ![DeepL](https://img.shields.io/badge/DeepL-API-blue.svg)
-![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)
 
 # Student Learning Journey Summarization System
 
 **AI-Powered Educational Data Analytics Platform**
 
-**Streamlit • Local vLLM Inference (Apple Silicon Metal) • DeepL Translation • OCR • Docker**
+**Streamlit • Vertex AI vLLM • Qwen3.6 • DeepL Translation • OCR**
 
 **Demo Video:** https://youtu.be/pLLHletb9pE
 
@@ -22,9 +21,9 @@
 
 The **Student Learning Journey Summarization System** is an AI-powered educational analytics platform that transforms raw academic records into meaningful insights, multilingual reports, and professional AI-generated summaries.
 
-Built with **Streamlit**, powered by a **self-hosted vLLM inference server** ([vllm-metal](https://github.com/vllm-project/vllm-metal) with Metal GPU acceleration on Apple Silicon), and integrated with the **DeepL Translation API**, the application processes both structured datasets and unstructured academic documents to generate comprehensive student learning reports.
+Built with **Streamlit** and **Vertex AI Model Garden**, the application uses one `Qwen3.6-35B-A3B` deployment for scanned-document transcription, evidence extraction, and report summarization. Vertex runs the model through an OpenAI-compatible vLLM serving container on a dedicated cloud GPU endpoint, so this Mac does not need an NVIDIA card.
 
-All AI inference runs **locally on your machine** — student data is never sent to a cloud LLM provider, and no LLM API key is required. If the local AI server is down, the app degrades gracefully to built-in rule-based summaries.
+Uploaded evidence is sent to the configured Vertex AI project for inference. If the endpoint is unavailable, the app degrades to native PDF extraction, Tesseract, and rule-based summaries.
 
 Translation is a separate, optional external service: selecting a non-English
 report language with `DEEPL_API_KEY` configured sends the selected report text
@@ -34,15 +33,17 @@ the resolved learner name plus common email, phone, and student-ID patterns
 with temporary placeholders and restores them locally afterward. This reduces
 exposure; it is not a substitute for approval to use an external processor.
 
-The Apple-Silicon setup is a **single-user desktop inference profile**, not a high-concurrency production server. The app deliberately serialises local LLM work, caches a completed result for each uploaded document, validates structured model output, and provides a deterministic rule-based fallback. For multi-user deployment, point `LLM_BASE_URL` at an approved Linux/NVIDIA vLLM service.
+The GPU runs in the configured Google Cloud project. The application caches completed document results and validates every structured model response. Access uses short-lived Google Application Default Credential tokens; do not commit endpoint credentials or student data.
 
 The platform automates data cleaning, OCR processing, analytics, behavioral analysis, interactive visualization, AI-powered summarization, and multilingual translation, enabling educators and institutions to make informed, data-driven decisions.
 
-Supported report languages include:
+The language menu offers:
 
 - English
-- Bahasa Indonesia
+- Bahasa Melayu
 - Chinese
+
+Bahasa Melayu is the Malay option. DeepL receives it as `MS`, not Indonesian. The built-in upload and service-warning text for that option is Malay. Other labels are translated from English when a DeepL key is configured.
 
 ---
 
@@ -52,17 +53,16 @@ Supported report languages include:
 |---|---|
 | Structured Data Processing | Cleans and processes CSV/Excel academic datasets |
 | Unstructured Document Processing | Extracts data from scanned documents using OCR |
-| AI Executive Summary | Generates professional summaries using a local LLM served by vLLM |
+| AI Executive Summary | Generates professional summaries using Qwen3.6 on Vertex AI |
 | DeepL Translation | Translates reports into multiple languages using DeepL API |
 | Interactive Analytics | Visualizes student performance through dynamic charts and dashboards |
 | Behavioral Analysis | Identifies learning patterns and behavioral trends |
 | Student Information Extraction | Automatically extracts student profiles from raw documents |
-| Secure LLM Client | Timeouts, retries, circuit breaker, and one-at-a-time admission control for the local inference server |
+| Secure LLM Client | Timeouts, retries, circuit breaker, and one-at-a-time admission control for the Vertex endpoint |
 | LLM Result Cache | Prevents a Streamlit rerun, language change, or download click from regenerating the same summary |
-| Structured Output Guard | Validates and normalises local-model JSON before certificate data reaches the UI |
+| Structured Output Guard | Validates and normalises model JSON before certificate data reaches the UI |
 | PII Protection | Protects sensitive student information before AI processing |
 | Audit Logging | Records system activities for traceability |
-| Docker Support | Fully containerized for consistent, reproducible deployment |
 
 ---
 
@@ -72,13 +72,12 @@ Supported report languages include:
 |---|---|
 | Frontend | Streamlit |
 | Backend | Python |
-| AI Inference | vLLM (OpenAI-compatible API) — vllm-metal on Apple Silicon |
-| AI Model | Qwen2.5-3B-Instruct 4-bit (MLX), configurable via `LLM_MODEL` |
+| AI Inference | Vertex AI Model Garden vLLM-compatible dedicated endpoint |
+| AI Model | Qwen3.6-35B-A3B |
 | Translation | DeepL API |
 | Data Processing | Pandas |
-| OCR | GLM-OCR through a local MLX-VLM endpoint, with native PDF / Tesseract fallback |
+| OCR | Qwen3.6 through Vertex AI, with native PDF / Tesseract fallback |
 | Visualization | Plotly / Matplotlib |
-| Containerization | Docker & Docker Compose |
 
 ---
 
@@ -88,11 +87,9 @@ Supported report languages include:
 
 - CPython 3.9–3.13 (Python 3.14 is not yet supported by the pinned
   scientific packages in `requirements.txt`)
-- An Apple Silicon Mac on macOS 15+ for local GPU-accelerated inference
-  (the vLLM installer bundles its own Python 3.12 environment), or any
-  OpenAI-compatible vLLM server reachable over HTTP
-- Docker and Docker Compose (for containerized deployment)
-- DeepL API key (only for translations — no LLM API key is needed)
+- A Google Cloud project with Vertex AI enabled and sufficient GPU quota
+- Google Cloud CLI with Application Default Credentials
+- DeepL API key (only for optional translations)
 
 ### Installation
 
@@ -134,47 +131,47 @@ cp .env.example .env
 
 Then edit `.env` with your DeepL API key (see [Environment Configuration](#environment-configuration)).
 
-**5. Start the shared local AI inference server (recommended for PDFs/images on M1 / 8 GB)**
+**5. Deploy Qwen3.6-35B-A3B on Vertex AI**
 
 ```bash
-bash scripts/start_mlx_vlm.sh
+python3.12 -m venv .venv-vertex
+.venv-vertex/bin/pip install 'google-cloud-aiplatform>=1.120' google-auth
+gcloud auth application-default login
+gcloud config set project YOUR_PROJECT_ID
+gcloud auth application-default set-quota-project YOUR_PROJECT_ID
+gcloud config set compute/region YOUR_REGION
 ```
 
-The launcher uses the existing `~/.venv-vllm-metal` Python but starts
-[MLX-VLM](https://github.com/Blaizzy/mlx-vlm) with **no model preloaded**. It
-uses one local cache and swaps Qwen and GLM-OCR on demand, rather than keeping
-both models resident. It is offline-only: both cached models must already be
-present; this command never downloads anything. Keep this terminal open and do
-not run `scripts/start_vllm.sh` at the same time (both use port 8000).
+Put the same project and region in `.env`:
 
-Verify the cached GLM-OCR runtime without loading a model, then make one small
-Qwen endpoint check from a second terminal:
+```env
+VERTEX_PROJECT=YOUR_PROJECT_ID
+VERTEX_REGION=YOUR_REGION
+```
+
+Then connect the app to the endpoint:
 
 ```bash
-bash scripts/doctor_glm_ocr.sh
-bash scripts/doctor_vllm.sh
+bash scripts/deploy_inference.sh
 ```
 
-The GLM doctor only checks the local runtime, cache, and shared endpoint. The
-Qwen doctor verifies `/models`, performs one tiny deterministic completion, and
-reports latency. Neither script installs or reconfigures packages.
+The script deploys `publishers/qwen/models/qwen3-6@qwen3.6-35b-a3b` in
+`YOUR_REGION` and writes the endpoint URL and model settings into `.env`.
+Keep `.env` out of Git. A later run
+reuses that endpoint. Set `VERTEX_FORCE_DEPLOY=1` only when you intend to
+create another GPU deployment. The endpoint keeps billing until you delete it
+in the Vertex AI console. Google credentials stay in the gcloud login and are
+not committed.
 
-Optional: run a full synthetic GLM-OCR → Qwen check. It creates no files and
-never uses an uploaded document; it unloads the shared model afterward.
-
-```bash
-./.venv/bin/python scripts/smoke_mlx_document_pipeline.py
-```
-
-**6. Run the application (in a second terminal)**
+**6. Open the application**
 
 ```bash
 bash scripts/run_app.sh
 ```
 
-The application will be available at `http://localhost:8501`.
+The application is available at `http://localhost:8501`.
 
-> If the local inference server is not running, the app still works — executive summaries fall back to the built-in rule-based narrative and a warning banner is shown.
+> If the Vertex endpoint is unavailable, the app still works: executive summaries fall back to the built-in rule-based narrative and a warning is shown.
 
 ### Verify the installation
 
@@ -195,162 +192,83 @@ when coverage falls below the current 45% floor.
 Create a `.env` file in the project root.
 
 ```env
-# DeepL Translation API (only external API used)
+# DeepL Translation API (optional)
 DEEPL_API_KEY=your_deepl_api_key
 ```
 
-### Local LLM settings (all optional, sensible defaults)
+### Vertex AI
+
+| Variable | Purpose |
+|---|---|
+| `VERTEX_PROJECT` | Google Cloud project that owns the endpoint. Put this only in `.env`. |
+| `VERTEX_REGION` | Vertex region, such as `us-central1`. Put this only in `.env`. |
+| `VERTEX_ENDPOINT_ID` | Existing endpoint to reuse. The deploy script writes it to `.env`. |
+| `VERTEX_ENDPOINT_DNS` | Dedicated endpoint DNS, when Vertex assigns one. Keep it in `.env`. |
+| `VERTEX_FORCE_DEPLOY` | Set to `1` to create another billed GPU endpoint instead of reusing `VERTEX_ENDPOINT_ID`. |
+
+`bash scripts/deploy_inference.sh` accepts the model EULA and deploys one
+replica on a dedicated endpoint. Requests use a short-lived Application
+Default Credential token. Do not put that token in `.env`.
+
+### Application model client
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `LLM_BASE_URL` | `http://127.0.0.1:8000/v1` | Shared local MLX-VLM endpoint (or another OpenAI-compatible server) |
-| `LLM_MODEL` | `mlx-community/Qwen2.5-3B-Instruct-4bit` | Model to request (must match the served model) |
-| `LLM_API_KEY` | *(none)* | Only if the server was started with `--api-key` |
-| `LLM_TIMEOUT_SECONDS` | `120` | Per-request timeout |
-| `LLM_MAX_RETRIES` | `2` | Retries for transient failures |
-| `LLM_BREAKER_COOLDOWN_SECONDS` | `60` | Fast-fail window after the server is unreachable |
-| `LLM_MAX_TOKENS` | `320` | Default completion token cap; task-specific calls use tighter limits |
-| `LLM_TEMPERATURE` | `0.3` | Sampling temperature |
-| `LLM_QUEUE_TIMEOUT_SECONDS` | `5` | Maximum wait for the single local inference slot |
-| `LLM_VALIDATE_NAMES` | `0` | Enables an extra local name check only for legacy/direct callers; unstructured uploads already ask Qwen for the recipient in their single extraction request |
-| `LLM_EXTRACTION_MAX_DOCUMENT_CHARS` | `6500` | Bounded evidence size for certificate extraction |
+| `LLM_BASE_URL` | Vertex endpoint URL written by the deploy script | OpenAI-compatible base URL, without a trailing `/chat/completions` |
+| `LLM_MODEL` | `qwen3.6-35b-a3b` | Must match the model served by the endpoint |
+| `LLM_TIMEOUT_SECONDS` | `180` | Per-request timeout |
+| `LLM_MAX_RETRIES` | `2` | SDK retries for transient failures |
+| `LLM_BREAKER_COOLDOWN_SECONDS` | `60` | Fast-fail window after server failure |
+| `LLM_MAX_TOKENS` | `512` | Default completion cap; tasks may override it |
+| `LLM_TEMPERATURE` | `0.2` | Default sampling temperature |
+| `LLM_ENABLE_THINKING` | `0` | Keep Qwen3.6 in concise instruct mode |
+| `LLM_QUEUE_TIMEOUT_SECONDS` | `30` | Wait limit for duplicate work from one app process |
+| `LLM_EXTRACTION_MAX_DOCUMENT_CHARS` | `12000` | Evidence budget for certificate extraction |
 
-For the recommended shared launcher, configure `MLX_VLM_HOST`,
-`MLX_VLM_PORT`, `MLX_VLM_VISION_CACHE_SIZE`, `MLX_VLM_PREFILL_STEP_SIZE`,
-`MLX_VLM_MAX_TOKENS`, and `MLX_VLM_MAX_KV_SIZE`. The legacy
-`scripts/start_vllm.sh` path instead uses `VLLM_PORT`, `VLLM_HOST`,
-`VLLM_MAX_MODEL_LEN`, `VLLM_GPU_MEMORY_UTILIZATION`, and `VLLM_MAX_NUM_SEQS`.
+### Visual document settings
 
-The app, server launcher, and health check all read the project `.env`. Set
-`LLM_MODEL` there when you want both terminals to use the same Qwen model.
-For unstructured documents, Qwen extracts the evidence-backed recipient,
-certificates, and skills once; the application then renders deterministic
-Plotly charts from those facts rather than asking the model to invent a chart.
+Born-digital PDF pages retain embedded text because it is faster and more
+faithful. Images and scanned/no-text PDF pages are rendered within bounded
+limits and sent to the same Qwen3.6 endpoint. The visual prompt asks for
+literal transcription only; certificate extraction and summarization remain
+separate validated stages.
 
-### GLM-OCR settings (PDFs and images)
+| Variable | Default | Purpose |
+|---|---|---|
+| `VLM_OCR_MODE` | `http` | Use vision only for pages without usable native text |
+| `VLM_OCR_MAX_PAGES` | `4` | Maximum visual pages per document |
+| `VLM_OCR_MAX_TOTAL_PAGES` | `30` | Maximum PDF pages considered |
+| `VLM_OCR_MAX_TOKENS` | `2048` | Transcription cap per rendered page |
+| `VLM_OCR_RENDER_DPI` | `180` | PDF rendering resolution before bounding |
+| `VLM_OCR_MAX_IMAGE_DIMENSION` | `2048` | Longest image edge sent to the Vertex model |
+| `VLM_OCR_MAX_DOCUMENT_BYTES` | `67108864` | Hard source-document limit |
+| `VLM_OCR_ALLOW_REMOTE` | `0` | Must be `1` before scanned pages may be sent to Vertex. The deploy script sets this. |
 
-For images and scanned PDF pages, the app first runs GLM-OCR locally through
-MLX-VLM. Its clean, page-labelled text is then passed to Qwen for evidence-based
-recipient, certificate, and skill extraction. Python and Plotly render the
-charts from those validated facts, so a model never fabricates chart values.
-
-For the recommended M1 / 8 GB profile, `scripts/start_mlx_vlm.sh` runs a single
-local MLX-VLM process on `127.0.0.1:8000` with no model preloaded.
-`GLM_OCR_MODE=http` sends a page to that endpoint using
-`mlx-community/GLM-OCR-bf16`; MLX-VLM releases the current text model before it
-loads the requested one, and the OCR client unloads GLM when extraction ends.
-The next Qwen request reloads Qwen. This trades a little model-switch latency
-for a much safer unified-memory peak than keeping both models resident.
-
-Born-digital PDF pages with usable embedded text stay native in HTTP mode,
-which is faster and preserves the original text. Images and scanned pages use
-GLM-OCR; failures fall back safely to native PDF extraction or Tesseract. The
-loopback-only endpoint and offline launcher mean an upload cannot send student
-data off-device or silently download a model. Verify the runtime and endpoint
-without loading a model:
-
-```bash
-bash scripts/doctor_glm_ocr.sh
-```
-
-On an M1 Pro with 8 GB unified memory, run `start_mlx_vlm.sh` instead of
-`start_vllm.sh` for PDFs and images, close memory-heavy apps, and retain this
-conservative OCR profile for large documents:
-
-```env
-GLM_OCR_MAX_PAGES=1
-GLM_OCR_MAX_TOTAL_PAGES=20
-GLM_OCR_MAX_TOKENS=1024
-GLM_OCR_MAX_DOCUMENT_BYTES=33554432
-```
-
-Use `GLM_OCR_MODE=http-force` only when you specifically need visual OCR on
-every PDF page. Set `GLM_OCR_MODE=off` to temporarily use the existing
-native/Tesseract fallback. `GLM_OCR_MODE=subprocess` is an explicit
-short-lived-worker fallback for diagnosing the shared server; it is not the
-recommended M1 / 8 GB profile and is blocked while another local Qwen/MLX
-service is live. See [`.env.example`](.env.example) for all bounded OCR
-controls.
-
-### Recommended M1 / 8 GB profile
-
-The default `mlx-community/Qwen2.5-3B-Instruct-4bit` is the quality-focused
-local choice for this project. For PDFs and images, use the shared MLX-VLM
-server so GLM-OCR and Qwen are never kept as two simultaneously active
-text-generation models:
-
-```bash
-bash scripts/start_mlx_vlm.sh
-```
-
-Do not set a 7B+ model as the default on an 8 GB Mac. If the 3B model cannot
-stay responsive, use the smaller Qwen fallback in both the server configuration
-and the app configuration:
-
-Terminal 1:
-
-```bash
-LLM_MODEL=mlx-community/Qwen2.5-1.5B-Instruct-4bit bash scripts/start_mlx_vlm.sh
-```
-
-Terminal 2:
-
-```bash
-LLM_MODEL=mlx-community/Qwen2.5-1.5B-Instruct-4bit bash scripts/run_app.sh
-```
-
-For 16 GB+ machines, test a larger model with `scripts/doctor_vllm.sh` before changing the application default. Larger models are not a substitute for output validation or prompt contracts. `scripts/start_vllm.sh` remains available for a legacy text-only vLLM-Metal setup, but do not run it alongside the shared MLX-VLM server.
+Use `VLM_OCR_MODE=http-force` only when every retained PDF page needs visual
+transcription. Use `VLM_OCR_MODE=off` to test native PDF and Tesseract fallbacks.
 
 ### Deployment boundary
 
-Both `scripts/start_mlx_vlm.sh` and the legacy `scripts/start_vllm.sh` bind to
-`127.0.0.1` by default, so the local endpoint is not exposed on the network.
-Do not expose a desktop MLX/VLLM endpoint directly to other users. For a shared
-or internet-facing deployment, run an approved Linux/NVIDIA vLLM service
-behind your organisation's authentication and network controls, then configure
-this app with its `LLM_BASE_URL`.
+Streamlit binds to the local machine. For multi-user or internet-facing
+deployment, add institutional SSO, TLS, request limits, and network policy in
+front of the application. Page pixels reach Vertex AI before text can be
+redacted, so that project must be approved for student-document processing.
 
 ---
 
-## Docker Deployment
-
-### Using Docker Compose (Recommended)
+## Running the application
 
 ```bash
-docker compose up --build
+bash scripts/run_app.sh
 ```
 
-The default Compose file is a local, immutable-image profile: it exposes the
-UI only on `127.0.0.1`, runs as a non-root user, and keeps runtime logs/data in
-named volumes. It does not copy `.env`, Streamlit secrets, or local student
-data into the image.
+Open `http://localhost:8501`. Restart the app after `deploy_inference.sh`
+changes `.env`, then refresh the browser.
 
-For live source edits during local development, use the explicit development
-override (on macOS/Linux):
-
-```bash
-LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) \
-  docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-```
-
-### Using Docker directly
-
-```bash
-docker build -t student-learning-journey .
-
-docker run -p 8501:8501 \
-  -e DEEPL_API_KEY=your_deepl_api_key \
-  -e LLM_BASE_URL=http://host.docker.internal:8000/v1 \
-  student-learning-journey
-```
-
-The application will be available at `http://localhost:8501`.
-
-> Note: the vLLM server runs natively on the host (Metal GPU access is not available inside Linux containers on macOS), so the container reaches it via `host.docker.internal`. On a Linux host with an NVIDIA GPU, run standard `vllm serve` and point `LLM_BASE_URL` at it.
-
-> Security note: this Streamlit UI does not provide user authentication. Keep
-> it on a trusted local network unless an approved SSO/authenticated reverse
-> proxy is placed in front of it.
+`docker-compose.yml` remains an optional NVIDIA-host path for
+`Qwen/Qwen3-VL-8B-Instruct`. It is not the Qwen3.6 Vertex deployment. The
+Streamlit UI has no built-in user authentication. Keep it on a trusted network
+or place approved SSO and TLS termination in front of it.
 
 ---
 
@@ -368,7 +286,7 @@ The application will be available at `http://localhost:8501`.
 7.  Perform behavioral analysis
 8.  Render interactive visualizations
 9.  Extract student profile information
-10. Generate AI Executive Summary using the local LLM (vLLM)
+10. Generate AI Executive Summary using the configured Qwen endpoint
 11. Translate the report using DeepL
 12. Export the final report
 ```
@@ -394,12 +312,11 @@ for traceability when conversion is needed (for example, `18/20` becomes 90%).
 
 ## Operational Features
 
-- Fully local AI inference via vLLM (OpenAI-compatible API, Metal GPU acceleration)
-- Student data never leaves the machine for LLM processing
+- Qwen3.6-35B-A3B on one dedicated Vertex AI endpoint in the configured region
+- Student evidence is sent only to the configured Vertex AI project for model inference
 - Circuit breaker, retries, and health checks around the inference server
 - DeepL Translation API integration
 - Secure configuration via environment variables
-- Docker and Docker Compose deployment
 - OCR document processing
 - AI-powered executive summaries
 - Student information extraction
@@ -413,7 +330,6 @@ for traceability when conversion is needed (for example, `18/20` becomes 90%).
 
 ## Future Improvements
 
-- Cloud-native deployment (AWS, Azure, GCP)
 - Historical student performance tracking
 - Database support (PostgreSQL / MySQL)
 - Role-based access control

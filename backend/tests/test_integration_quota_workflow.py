@@ -74,11 +74,11 @@ class TestServiceUnavailableIntegration:
         """Test that all multi-language translations exist in the integrated UI_STRINGS"""
         # Verify ALL translation strings exist and are correct (direct from shared UI_STRINGS)
         # English
-        assert UI_STRINGS["llm_service_warning"] == "⚠️ Sorry, our local AI summary service is temporarily unavailable"
-        # Bahasa Indonesia
-        assert UI_STRINGS["llm_service_warning_id"] == "⚠️ Maaf, layanan ringkasan AI lokal kami sementara tidak tersedia"
+        assert UI_STRINGS["llm_service_warning"] == "⚠️ Sorry, the AI summary service is temporarily unavailable"
+        # Bahasa Melayu
+        assert UI_STRINGS["llm_service_warning_ms"] == "⚠️ Maaf, perkhidmatan ringkasan AI kami tidak tersedia buat sementara waktu"
         # Chinese
-        assert UI_STRINGS["llm_service_warning_zh"] == "⚠️ 抱歉，我们的本地AI摘要服务暂时无法使用"
+        assert UI_STRINGS["llm_service_warning_zh"] == "⚠️ 抱歉，AI摘要服务暂时无法使用"
 
         # Initialize translator and verify get_string retrieves correct strings per language
         translator = DeepLUITranslator()
@@ -88,11 +88,11 @@ class TestServiceUnavailableIntegration:
 
         # For other languages, since DeepL might be offline in test environment, it should return the original string
         # or we can verify that the translation strings exist in UI_STRINGS
-        indonesian_warning = UI_STRINGS["llm_service_warning_id"]
-        assert indonesian_warning == "⚠️ Maaf, layanan ringkasan AI lokal kami sementara tidak tersedia"
+        malay_warning = UI_STRINGS["llm_service_warning_ms"]
+        assert malay_warning == "⚠️ Maaf, perkhidmatan ringkasan AI kami tidak tersedia buat sementara waktu"
 
         chinese_warning = UI_STRINGS["llm_service_warning_zh"]
-        assert chinese_warning == "⚠️ 抱歉，我们的本地AI摘要服务暂时无法使用"
+        assert chinese_warning == "⚠️ 抱歉，AI摘要服务暂时无法使用"
 
     @patch('streamlit.warning')
     @patch('backend.llm_client.OpenAI')
