@@ -333,6 +333,10 @@ for traceability when conversion is needed (for example, `18/20` becomes 90%).
 - Historical student performance tracking
 - Database support (PostgreSQL / MySQL)
 - Role-based access control
+
+## Application Video
+
+[![Application Preview](https://img.youtube.com/vi/pLLHletb9pE/maxresdefault.jpg)](https://youtu.be/pLLHletb9pE)
   
 ## REST API
 
